@@ -45,5 +45,14 @@ jobs:
         git clone https://github.com/nvim-treesitter/nvim-treesitter.git ../nvim-treesitter
         git -C ../nvim-treesitter checkout 2ba5ec184609a96b513bf4c53a20512d64e27f39
 
+    - name: Install treesitter parsers
+      run: |
+        nvim --headless \
+          -c "set rtp+=../nvim-treesitter" \
+          -c "runtime plugin/nvim-treesitter.lua" \
+          -c "TSInstall lua typescript" \
+          -c "lua vim.wait(60000, function() local ok1 = pcall(vim.treesitter.language.inspect, 'lua'); local ok2 = pcall(vim.treesitter.language.inspect, 'typescript'); return ok1 and ok2 end, 1000)" \
+          -c "quit"
+
     - name: Run pr_ready
       run: make pr_ready
