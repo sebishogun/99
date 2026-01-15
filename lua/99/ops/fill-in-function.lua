@@ -55,6 +55,7 @@ local function fill_in_function(context, opts)
 
   context.range = func.function_range
 
+  logger:debug("fill_in_function", "opts", opts)
   local virt_line_count = context._99.ai_stdout_rows
   if virt_line_count >= 0 then
     context.marks.function_location = Mark.mark_func_body(buffer, func)
@@ -68,11 +69,13 @@ local function fill_in_function(context, opts)
       context._99.prompts.prompts.prompt(additional_prompt, full_prompt)
 
     local rules = Agents.find_rules(context._99.rules, additional_prompt)
+    logger:debug("found rules", "rules", rules)
     context:add_agent_rules(rules)
   end
 
   local additional_rules = opts.additional_rules
   if additional_rules then
+    logger:debug("additional_rules", "additional_rules", additional_rules)
     context:add_agent_rules(additional_rules)
   end
 

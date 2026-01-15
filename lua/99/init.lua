@@ -181,7 +181,9 @@ function _99.fill_in_function_prompt()
         response
       )
       if success then
-        ops.fill_in_function(context, response)
+        ops.fill_in_function(context, {
+          additional_prompt = response,
+        })
       end
     end,
     on_load = function()
@@ -207,7 +209,7 @@ function _99.visual_prompt()
         response
       )
       if success then
-        _99.visual(response)
+        _99.visual(context, response)
       end
     end,
     on_load = function()
@@ -216,9 +218,9 @@ function _99.visual_prompt()
   })
 end
 
---- @param prompt string?
 --- @param context _99.RequestContext?
-function _99.visual(prompt, context)
+--- @param prompt string?
+function _99.visual(context, prompt)
   --- TODO: Talk to teej about this.
   --- Visual selection marks are only set in place post visual selection.
   --- that means for this function to work i must escape out of visual mode
@@ -227,7 +229,9 @@ function _99.visual(prompt, context)
 
   context = context or get_context("over-range")
   local range = Range.from_visual_selection()
-  ops.over_range(context, range, prompt)
+  ops.over_range(context, range, {
+    additional_prompt = prompt,
+  })
 end
 
 --- View all the logs that are currently cached.  Cached log count is determined
@@ -322,6 +326,7 @@ function _99.setup(opts)
 
   _99_state.display_errors = opts.display_errors or false
 
+  _99_state:refresh_rules()
   Languages.initialize(_99_state)
   Extensions.init(_99_state)
 end

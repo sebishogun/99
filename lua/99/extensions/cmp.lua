@@ -79,7 +79,10 @@ function CmpSource:complete(params, callback)
       insertText = item.rule.path,
       filterText = item.rule.name,
       kind = 17, -- file
-      documentation = item.docs,
+      documentation = {
+        kind = "markdown",
+        value = item.docs,
+      },
       detail = item.rule.path,
     })
   end
@@ -88,7 +91,6 @@ function CmpSource:complete(params, callback)
     items = items,
     isIncomplete = false,
   })
-
 end
 
 --- TODO: Look into what this could be
@@ -122,11 +124,15 @@ local function init(_99)
 
   local cmp = require("cmp")
   source = CmpSource.new(_99)
+  source.items = rules(_99)
   cmp.register_source(SOURCE, source)
 end
 
 --- @param _99 _99.State
 local function refresh_state(_99)
+  if not source then
+    return
+  end
   source.items = rules(_99)
 end
 
