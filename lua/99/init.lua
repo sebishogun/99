@@ -167,7 +167,9 @@ function _99.info()
   Window.display_centered_message(info)
 end
 
-function _99.fill_in_function_prompt()
+--- @param opts? _99.ops.Opts
+function _99.fill_in_function_prompt(opts)
+  opts = opts or {}
   local context = get_context("fill-in-function-with-prompt")
 
   context.logger:debug("start")
@@ -181,9 +183,8 @@ function _99.fill_in_function_prompt()
         response
       )
       if success then
-        ops.fill_in_function(context, {
-          additional_prompt = response,
-        })
+        opts.additional_prompt = response
+        ops.fill_in_function(context, opts)
       end
     end,
     on_load = function()
@@ -192,11 +193,14 @@ function _99.fill_in_function_prompt()
   })
 end
 
-function _99.fill_in_function()
-  ops.fill_in_function(get_context("fill_in_function"))
+--- @param opts? _99.ops.Opts
+function _99.fill_in_function(opts)
+  ops.fill_in_function(get_context("fill_in_function"), opts)
 end
 
-function _99.visual_prompt()
+--- @param opts _99.ops.Opts
+function _99.visual_prompt(opts)
+  opts = opts or {}
   local context = get_context("over-range-with-prompt")
   context.logger:debug("start")
   Window.capture_input({
@@ -209,7 +213,8 @@ function _99.visual_prompt()
         response
       )
       if success then
-        _99.visual(context, response)
+        opts.additional_prompt = response
+        _99.visual(context, opts)
       end
     end,
     on_load = function()
@@ -219,8 +224,8 @@ function _99.visual_prompt()
 end
 
 --- @param context _99.RequestContext?
---- @param prompt string?
-function _99.visual(context, prompt)
+--- @param opts _99.ops.Opts?
+function _99.visual(context, opts)
   --- TODO: Talk to teej about this.
   --- Visual selection marks are only set in place post visual selection.
   --- that means for this function to work i must escape out of visual mode
@@ -229,9 +234,7 @@ function _99.visual(context, prompt)
 
   context = context or get_context("over-range")
   local range = Range.from_visual_selection()
-  ops.over_range(context, range, {
-    additional_prompt = prompt,
-  })
+  ops.over_range(context, range, opts)
 end
 
 --- View all the logs that are currently cached.  Cached log count is determined
@@ -295,14 +298,6 @@ function _99.setup(opts)
     }
   _99_state.completion.cursor_rules = _99_state.completion.cursor_rules
     or ".cursor/rules/"
-
-  _99_state.completion = {
-    cursor_rules = "scratch/cursor/rules",
-    custom_rules = {
-      "scratch/custom_rules/",
-    },
-    source = "cmp",
-  }
 
   vim.api.nvim_create_autocmd("VimLeavePre", {
     callback = function()

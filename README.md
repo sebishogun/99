@@ -31,6 +31,22 @@ I make the assumption you are using Lazy
 					print_on_error = true,
 				},
 
+                --- A new feature that is centered around tags
+                completion = {
+                    --- Defaults to .cursor/rules
+                    cursor_rules = "<custom path to cursor rules>"
+
+                    --- A list of folders where you have your own agents
+                    custom_rules = {
+                      "scratch/custom_rules/",
+                    },
+
+                    --- What autocomplete do you use.  We currently only
+                    --- support cmp right now
+                    source = "cmp",
+
+                }
+
                 --- WARNING: if you change cwd then this is likely broken
                 --- ill likely fix this in a later change
                 ---
@@ -62,6 +78,14 @@ I make the assumption you are using Lazy
 
             --- if you have a request you dont want to make any changes, just cancel it
 			vim.keymap.set("v", "<leader>9s", function()
+				_99.stop_all_requests()
+			end)
+
+            --- a example using rules + action to produce a real exciting effect
+            --- ~/.rules/debug.md imagine that this is a behavior that adds in
+            --- the behavior where printf is what you want to debug and will
+            --- attempt to printf the functions contents for debugging
+			vim.keymap.set("n", "<leader>9fd", function()
 				_99.stop_all_requests()
 			end)
 		end,

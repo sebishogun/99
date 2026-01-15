@@ -112,6 +112,14 @@ local function init_for_buffer(_99)
     sources = {
       { name = SOURCE },
     },
+    window = {
+      completion = {
+        zindex = 1001,
+      },
+      documentation = {
+        zindex = 1001,
+      },
+    },
   })
 end
 
