@@ -105,4 +105,75 @@ describe("Range", function()
     local text = range:to_text()
     eq("  local x = 1", text)
   end)
+
+  it(
+    "should handle from_visual_selection when visual marks point past buffer end",
+    function()
+      -- This test simulates the bug where '> mark points to a row beyond the buffer
+      -- which causes nvim_buf_get_lines to return empty table and end_line to be nil
+      local small_buffer = test_utils.create_file({
+        "line one",
+        "line two",
+      }, "lua", 1, 0)
+
+      -- Manually set the visual marks to point beyond the buffer
+      -- This simulates the state that causes the crash
+      vim.fn.setpos("'<", { small_buffer, 1, 1, 0 })
+      vim.fn.setpos("'>", { small_buffer, 100, 1, 0 })
+
+      -- This should not crash with "attempt to get length of local 'end_line' (a nil value)"
+      local ok, err = pcall(Range.from_visual_selection)
+      -- Currently this fails - the test demonstrates the bug
+      -- After fix, this should either return a valid range or a meaningful error
+      assert.is_true(ok, "from_visual_selection crashed: " .. tostring(err))
+    end
+  )
+
+  it(
+    "should handle from_visual_selection when buffer has been modified",
+    function()
+      -- Create buffer with some content
+      local mod_buffer = test_utils.create_file({
+        "function test()",
+        "  return 1",
+        "  return 2",
+        "  return 3",
+        "end",
+      }, "lua", 1, 0)
+
+      -- Make a visual selection on lines 2-4
+      vim.api.nvim_win_set_cursor(0, { 2, 0 })
+      vim.api.nvim_feedkeys("V2j", "x", false)
+      test_utils.next_frame()
+      vim.api.nvim_feedkeys(
+        vim.api.nvim_replace_termcodes("<Esc>", true, false, true),
+        "x",
+        false
+      )
+
+      -- Now delete lines from the buffer, making the visual marks stale
+      vim.api.nvim_buf_set_lines(mod_buffer, 0, -1, false, { "only one line" })
+
+      -- The visual marks still point to old positions that no longer exist
+      -- This should not crash
+      local ok, err = pcall(Range.from_visual_selection)
+      assert.is_true(ok, "from_visual_selection crashed: " .. tostring(err))
+    end
+  )
+
+  it("should handle from_visual_selection on empty buffer", function()
+    -- Create an empty buffer
+    local empty_buffer = test_utils.create_file({}, "lua", 1, 0)
+
+    -- Set visual marks that would be invalid for empty buffer
+    vim.fn.setpos("'<", { empty_buffer, 1, 1, 0 })
+    vim.fn.setpos("'>", { empty_buffer, 1, 1, 0 })
+
+    -- This should not crash
+    local ok, err = pcall(Range.from_visual_selection)
+    assert.is_true(
+      ok,
+      "from_visual_selection crashed on empty buffer: " .. tostring(err)
+    )
+  end)
 end)
