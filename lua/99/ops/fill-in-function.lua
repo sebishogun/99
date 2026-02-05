@@ -44,8 +44,21 @@ local function fill_in_function(context, opts)
   opts = opts or {}
   local logger = context.logger:set_area("fill_in_function")
   local ts = editor.treesitter
-  local buffer = vim.api.nvim_get_current_buf()
-  local cursor = Point:from_cursor()
+
+  -- Restore focus to original window if it's still valid
+  if context.window and vim.api.nvim_win_is_valid(context.window) then
+    vim.api.nvim_set_current_win(context.window)
+  end
+
+  -- Use stored cursor position from context if available, otherwise get current
+  local cursor
+  if context.cursor_pos then
+    -- cursor_pos is [row, col] from nvim_win_get_cursor (1-indexed row, 0-indexed col)
+    cursor = Point.from_0_based(context.cursor_pos[1] - 1, context.cursor_pos[2])
+  else
+    cursor = Point:from_cursor()
+  end
+
   local func = ts.containing_function(context, cursor)
 
   if not func then

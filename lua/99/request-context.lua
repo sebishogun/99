@@ -9,6 +9,8 @@ local random_file = utils.random_file
 --- @field tmp_file string
 --- @field full_path string
 --- @field buffer number
+--- @field window number
+--- @field cursor_pos number[]
 --- @field file_type string
 --- @field marks table<string, _99.Mark>
 --- @field logger _99.Logger
@@ -24,6 +26,8 @@ RequestContext.__index = RequestContext
 --- @return _99.RequestContext
 function RequestContext.from_current_buffer(_99, xid)
   local buffer = vim.api.nvim_get_current_buf()
+  local window = vim.api.nvim_get_current_win()
+  local cursor_pos = vim.api.nvim_win_get_cursor(window)
   local full_path = vim.api.nvim_buf_get_name(buffer)
   local file_type = vim.bo[buffer].ft
 
@@ -42,6 +46,8 @@ function RequestContext.from_current_buffer(_99, xid)
     ai_context = {},
     tmp_file = random_file(),
     buffer = buffer,
+    window = window,
+    cursor_pos = cursor_pos,
     full_path = full_path,
     file_type = file_type,
     logger = Logger:set_id(xid),
