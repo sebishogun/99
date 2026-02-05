@@ -257,7 +257,10 @@ end
 --- @param win _99.window.Window
 --- @param name string
 local function set_defaul_win_options(win, name)
-  vim.api.nvim_buf_set_name(win.buf_id, name)
+  -- Use a unique buffer name that won't conflict with actual files
+  -- Prefix with "99://" to make it clear this is a virtual buffer
+  local unique_name = string.format("99://%s/%d", name, win.buf_id)
+  vim.api.nvim_buf_set_name(win.buf_id, unique_name)
   vim.wo[win.win_id].number = true
   vim.bo[win.buf_id].filetype = "99"
   vim.bo[win.buf_id].buftype = "acwrite"
