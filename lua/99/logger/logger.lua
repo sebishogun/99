@@ -288,7 +288,11 @@ function Logger:_log(level, msg, ...)
   put_args(log_statement, to_args(...))
   put_args(log_statement, self.extra_params)
 
-  assert(log_statement["id"], "every log must have an id associated with it")
+  -- Only require id if we're tracking requests (has id in extra_params)
+  -- Module-level logging doesn't need an id
+  if self.extra_params.id then
+    log_statement["id"] = self.extra_params.id
+  end
 
   local json_string = vim.json.encode(log_statement)
   if self.print_on_error and level == levels.ERROR then
