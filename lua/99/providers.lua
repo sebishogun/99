@@ -135,13 +135,14 @@ function BaseProvider:make_request(query, request, observer)
 end
 
 --- @class OpenCodeProvider : _99.Providers.BaseProvider
+--- Uses the 'neovim' agent which has write access to ~/.cache/nvim/
 local OpenCodeProvider = setmetatable({}, { __index = BaseProvider })
 
 --- @param query string
 --- @param request _99.Request
 --- @return string[]
 function OpenCodeProvider._build_command(_, query, request)
-  return { "opencode", "run", "-m", request.context.model, query }
+  return { "opencode", "run", "--agent", "neovim", "-m", request.context.model, query }
 end
 
 --- @return string
