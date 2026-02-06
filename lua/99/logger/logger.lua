@@ -259,6 +259,7 @@ end
 --- of unit tests
 function Logger.reset()
   logger_cache = {}
+  logger_list = {}
   max_requests_in_logger_cache = MAX_REQUEST_DEFAULT
 end
 

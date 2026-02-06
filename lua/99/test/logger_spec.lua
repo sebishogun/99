@@ -33,12 +33,12 @@ describe("Logger", function()
     Logger.set_max_cached_requests(2)
   end)
 
-  it("no caching of non ID'd logs.  Global logs", function()
+  it("does not cache non-ID logs (global/module logs)", function()
     eq({}, Logger.logs())
 
     local ok = pcall(Logger.debug, Logger, "test log")
     eq({}, Logger.logs())
-    eq(ok, false)
+    eq(true, ok)
   end)
 
   it("cache logs, keep max count", function()
