@@ -75,7 +75,7 @@ local function fill_in_function(context, opts)
   end
 
   local request = Request.new(context)
-  local full_prompt = context._99.prompts.prompts.fill_in_function()
+  local full_prompt = context._99.prompts.prompts.fill_in_function(context.file_type)
   local additional_prompt = opts.additional_prompt
   if additional_prompt then
     full_prompt =
