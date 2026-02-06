@@ -242,8 +242,9 @@ function CopilotCLIProvider._build_command(_, query, request)
   return {
     "copilot",
     "-p", query,
-    "-m", request.context.model,
-    "--allow-all-tools",
+    "--model", request.context.model,
+    "--silent",
+    "--yolo",
   }
 end
 
