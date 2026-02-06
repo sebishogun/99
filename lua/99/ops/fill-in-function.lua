@@ -71,7 +71,7 @@ local function fill_in_function(context, opts)
   logger:debug("fill_in_function", "opts", opts)
   local virt_line_count = context._99.ai_stdout_rows
   if virt_line_count >= 0 then
-    context.marks.function_location = Mark.mark_func_body(buffer, func)
+    context.marks.function_location = Mark.mark_func_body(context.buffer, func)
   end
 
   local request = Request.new(context)
