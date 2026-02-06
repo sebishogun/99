@@ -128,8 +128,8 @@ CRITICAL OUTPUT RULES:
     -- Get human-readable location (line:col to line:col)
     local start_line = range.start.row
     local start_col = range.start.col
-    local end_line = range.stop.row
-    local end_col = range.stop.col
+    local end_line = range.end_.row
+    local end_col = range.end_.col
     local location = string.format("Lines %d:%d to %d:%d", start_line, start_col, end_line, end_col)
 
     return string.format(
@@ -194,7 +194,7 @@ local prompt_settings = {
     )
     -- Use human-readable format instead of internal range representation
     local start_line = context.range.start.row
-    local end_line = context.range.stop.row
+    local end_line = context.range.end_.row
     return string.format(
       "<Location><File>%s</File><Lines>%d-%d</Lines></Location>",
       context.full_path,
