@@ -86,6 +86,29 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 }
 ```
 
+## Fresh Setup (with LazyVim-Config)
+
+If you are bootstrapping this fork with the companion LazyVim repo:
+
+```bash
+mkdir -p ~/neovim-configs
+cd ~/neovim-configs
+git clone https://github.com/sebishogun/LazyVim-Config.git LazyvimCustomConfig
+git clone https://github.com/sebishogun/99.git 99
+cd ~/neovim-configs/LazyvimCustomConfig
+./install.sh --dry-run
+./install.sh
+```
+
+Post-install checks in Neovim:
+
+```vim
+:NNStatus
+:lua require("99").doctor()
+:NNProvider <Tab>
+:NNModel <Tab>
+```
+
 ## Keymaps
 
 | Key | Mode | Action |
