@@ -7,7 +7,10 @@ end
 
 --- @class _99.Prompts.SpecificOperations
 --- @field visual_selection fun(range: _99.Range): string
---- @field fill_in_function fun(): string
+--- @field semantic_search fun(): string
+--- @field prompt fun(prompt: string, action: string, name: string): string
+--- @field role fun(): string
+--- @field read_tmp fun(): string
 local prompts = {
   role = function()
     return [[ You are a software engineering assistant mean to create robust and conanical code ]]
@@ -38,44 +41,6 @@ foo.js at line 71, char 12 and the next 6 lines
 bar.js at line 13, char 2
 baz.js at line 1, char 1 and the next 51 lines
 </Meaning>
-]]
-  end,
-  fill_in_function = function()
-    return [[
-You have been given a function change.
-Create the contents of the function.
-If the function already contains contents, use those as context
-Check the contents of the file you are in for any helper functions or context
-Your response should be the complete function, including signature
-
-<Example>
-<Input>
-export function fizz_buzz(count: number): void {
-}
-</Input>
-<Output>
-function fizz_buzz(count: number): void {
-  for (let i = 1; i <= count; i++) {
-    if (i % 15 === 0) {
-      console.log("FizzBuzz");
-    } else if (i % 3 === 0) {
-      console.log("Fizz");
-    } else if (i % 5 === 0) {
-      console.log("Buzz");
-    } else {
-      console.log(i);
-    }
-  }
-}
-</Output>
-<Notes>
-* notice that the output did not include the export statement
-* only return the function
-</Notes>
-</Example>
-
-
-if there are DIRECTIONS, follow those when changing this function.  Do not deviate
 ]]
   end,
   output_file = function()
@@ -128,12 +93,14 @@ consider the context of the selection and what you are suppose to be implementin
     )
   end,
   -- luacheck: ignore 631
-  read_tmp = [[
+  read_tmp = function()
+    return [[
 never attempt to read TEMP_FILE.
 It is purely for output.
 Previous contents, which may not exist, can be written over without worry
 After writing TEMP_FILE once you should be done.  Be done and end the session.
-]],
+]]
+  end,
 }
 
 --- @class _99.Prompts
@@ -146,7 +113,7 @@ local prompt_settings = {
     return string.format(
       "<MustObey>\n%s\n%s\n</MustObey>\n<TEMP_FILE>%s</TEMP_FILE>",
       prompts.output_file(),
-      prompts.read_tmp,
+      prompts.read_tmp(),
       tmp_file
     )
   end,

@@ -157,12 +157,6 @@ Then the virtual text will be displayed one line below "function" instead of fir
 * visual selection sends the whole file.  there is likely a better way to use
   treesitter to make the selection of the content being sent more sensible.
 
-* for both fill in function and visual there should be a better way to gather
-context.  I think that treesitter + lsp could be really powerful.  I am going
-to experiment with this more once i get access to the FIM models.  This could
-make the time to completion less than a couple seconds, which would be
-incredible
-
 * every now and then the replacement seems to get jacked up and it screws up
 what i am currently editing..  I think it may have something to do with auto-complete
   * definitely not suure on this one
