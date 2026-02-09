@@ -444,10 +444,16 @@ function _99.__get_state()
 end
 
 local function shut_down_in_flight_requests_window()
+  print("shut_down_in_flight_requests_window")
+  print(debug.traceback())
   if _99_state.show_in_flight_requests_throbber then
     _99_state.show_in_flight_requests_throbber:stop()
   end
 
+  local win = _99_state.show_in_flight_requests_window
+  if win ~= nil then
+    Window.close(win)
+  end
   _99_state.show_in_flight_requests_window = nil
   _99_state.show_in_flight_requests_throbber = nil
 end
@@ -456,15 +462,22 @@ local function show_in_flight_requests()
   if _99_state.show_in_flight_requests == false then
     return
   end
+  vim.defer_fn(show_in_flight_requests, 1000)
 
-  if Window.has_active_windows() then
+  Window.refresh_active_windows()
+  local current_win = _99_state.show_in_flight_requests_window
+  if current_win ~= nil and not Window.is_active_window(current_win) then
+    shut_down_in_flight_requests_window()
+  end
+
+  if Window.has_active_windows() or _99_state:active_request_count() == 0 then
     return
   end
 
   if _99_state.show_in_flight_requests_window == nil then
     local win = Window.status_window()
-    _99_state.show_in_flight_requests_window = win
-    _99_state.show_in_flight_requests_throbber = Throbber.new(function(throb)
+    print("created throbber")
+    local throb = Throbber.new(function(throb)
       local count = _99_state:active_request_count()
       if count == 0 or not Window.valid(win) then
         return shut_down_in_flight_requests_window()
@@ -478,11 +491,15 @@ local function show_in_flight_requests()
       end
 
       Window.vertical_resize(win, #lines)
+      print("vertical_resize", #lines)
       vim.api.nvim_buf_set_lines(win.buf_id, 0, 1, lines)
     end)
-  end
+    _99_state.show_in_flight_requests_window = win
+    _99_state.show_in_flight_requests_throbber = throb
 
-  vim.defer_fn(show_in_flight_requests, 1000)
+    print("created throbber")
+    throb:start()
+  end
 end
 
 --- @param opts _99.Options?

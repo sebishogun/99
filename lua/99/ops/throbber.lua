@@ -58,6 +58,7 @@ function Throbber.new(cb)
 end
 
 function Throbber:_run()
+    print("throbbing", self.state)
   if self.state ~= "throbbing" and self.state ~= "cooldown" then
     return
   end
@@ -73,6 +74,7 @@ function Throbber:_run()
   end
 
   self.cb(icon)
+    print("throbbing", self.state, icon)
   vim.defer_fn(function()
     self:_run()
   end, 75)
