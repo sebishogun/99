@@ -9,6 +9,10 @@ end
 --- @field visual_selection fun(range: _99.Range, filetype: string): string
 --- @field fill_in_function fun(filetype: string): string
 --- @field implement_function fun(filetype: string): string
+--- @field semantic_search fun(): string
+--- @field prompt fun(prompt: string, action: string, name?: string): string
+--- @field role fun(): string
+--- @field read_tmp fun(): string
 local prompts = {
   --- System role prompt - sets the AI's persona
   --- @return string
@@ -66,6 +70,41 @@ If there are DIRECTIONS provided, follow them precisely. Do not deviate.
 ]], filetype or "the given language", filetype or "", filetype or "the given language")
   end,
 
+  semantic_search = function()
+    return [[
+you are given a prompt and you must search through this project and return code that matches the description provided.
+<Rule>You must provide output without any commentary, just text locations</Rule>
+<Rule>Text locations are in the format of: /path/to/file.ext:lnum:cnum,X,NOTES
+lnum = starting line number 1 based
+cnum = starting column number 1 based
+X = how many lines should be highlighted
+NOTES = A text description of why this highlight is important
+</Rule>
+<Rule>NOTES cannot have new lines</Rule>
+<Rule>You must adhere to the output format</Rule>
+<Rule>Double check output format before writing it to the file</Rule>
+<Rule>Each location is separated by new lines</Rule>
+<Rule>Each path is specified in absolute pathing</Rule>
+<Rule>You can provide notes you think are relevant per location</Rule>
+<Example>
+You have found 3 locations in files foo.js, bar.js, and baz.js.
+There are 2 locations in foo.js, 1 in bar.js and baz.js.
+<Output>
+/path/to/project/src/foo.js:24:8,3,Some notes here about some stuff, it can contain commas
+/path/to/project/src/foo.js:71:12,7,more notes, everything is great!
+/path/to/project/src/bar.js:13:2,1,more notes again, this time specfically about bar and why bar is so important
+/path/to/project/src/baz.js:1:1,52,Notes about why baz is very important to the results
+</Output>
+<Meaning>
+This means that the search results found
+foo.js at line 24, char 8 and the next 2 lines
+foo.js at line 71, char 12 and the next 6 lines
+bar.js at line 13, char 2
+baz.js at line 1, char 1 and the next 51 lines
+</Meaning>
+]]
+  end,
+
   --- Implement function at call site prompt
   --- @param filetype string The programming language
   --- @return string
@@ -104,18 +143,22 @@ CRITICAL OUTPUT RULES:
   --- Wrap user prompt with action context
   --- @param prompt string User's directions
   --- @param action string The action/context prompt
+  --- @param name? string defaults to DIRECTIONS
   --- @return string
-  prompt = function(prompt, action)
+  prompt = function(prompt, action, name)
+    name = name or "DIRECTIONS"
     return string.format(
       [[
-<DIRECTIONS>
+<%s>
 %s
-</DIRECTIONS>
+</%s>
 <Context>
 %s
 </Context>
 ]],
+      name,
       prompt,
+      name,
       action
     )
   end,
@@ -167,7 +210,14 @@ If there are DIRECTIONS provided, follow them precisely.
   end,
 
   -- luacheck: ignore 631
-  read_tmp = "Never attempt to read TEMP_FILE. It is purely for output. Previous contents can be overwritten without concern.",
+  read_tmp = function()
+    return [[
+never attempt to read TEMP_FILE.
+It is purely for output.
+Previous contents, which may not exist, can be written over without worry
+After writing TEMP_FILE once you should be done.  Be done and end the session.
+]]
+  end,
 }
 
 --- @class _99.Prompts
@@ -180,7 +230,7 @@ local prompt_settings = {
     return string.format(
       "<OutputInstructions>\n%s\n%s\n</OutputInstructions>\n<TEMP_FILE>%s</TEMP_FILE>",
       prompts.output_file(),
-      prompts.read_tmp,
+      prompts.read_tmp(),
       tmp_file
     )
   end,

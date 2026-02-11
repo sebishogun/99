@@ -8,18 +8,15 @@ describe("providers", function()
       local request = { context = { model = "anthropic/claude-opus-4-6" } }
       local cmd =
         Providers.OpenCodeProvider._build_command(nil, "test query", request)
-      eq(
-        {
-          "opencode",
-          "run",
-          "--agent",
-          "neovim",
-          "-m",
-          "anthropic/claude-opus-4-6",
-          "test query",
-        },
-        cmd
-      )
+      eq({
+        "opencode",
+        "run",
+        "--agent",
+        "neovim",
+        "-m",
+        "anthropic/claude-opus-4-6",
+        "test query",
+      }, cmd)
     end)
 
     it("has correct default model", function()
