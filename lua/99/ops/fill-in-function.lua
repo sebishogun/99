@@ -233,8 +233,8 @@ local function fill_in_function(context, opts)
         logger:debug("fill_in_function was cancelled")
         -- TODO: small status window here
       elseif status == "success" then
-        local ok, err = pcall(update_file_with_changes, context, response)
-        if not ok then
+        local apply_ok, err = pcall(update_file_with_changes, context, response)
+        if not apply_ok then
           logger:error("Failed to apply changes", "error", tostring(err))
           vim.notify(
             "99: Failed to apply changes: " .. tostring(err),

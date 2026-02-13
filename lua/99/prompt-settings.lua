@@ -39,7 +39,9 @@ RULES:
 5. Write idiomatic %s code following best practices
 6. Keep modifiers/signature details present in the input (e.g. export/async/public)
 
-IMPORTS: If the function needs imports/requires that are NOT already in the file, output them FIRST, then output the exact line "---99-IMPORTS-END---", then output the function. If no new imports are needed, just output the function directly.
+IMPORTS: If the function needs imports/requires that are NOT already in the file,
+output them FIRST, then output the exact line "---99-IMPORTS-END---",
+then output the function. If no new imports are needed, just output the function directly.
 
 <Example language="go">
 <Input>
