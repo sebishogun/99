@@ -8,6 +8,7 @@ local Prompt = require("99.prompt")
 --- @field search number | nil
 --- @field tutorial number | nil
 --- @field visual number | nil
+--- @field fill_in_function number | nil
 ---
 --- @class _99.State.Tracking.Config.Options
 --- @field serialize_counts _99.State.Tracking.Config.Options.Counts | nil
@@ -102,7 +103,7 @@ function Tracking:active_count()
   return count
 end
 
---- @param type "search" | "visual" | "tutorial"
+--- @param type "search" | "visual" | "tutorial" | "fill_in_function"
 --- @return _99.Prompt[]
 function Tracking:request_by_type(type)
   local out = {} --[[ @as _99.Prompt[] ]]
@@ -179,6 +180,7 @@ Tracking.__config = {
     search = 1,
     tutorial = 3,
     visual = 0,
+    fill_in_function = 0,
   },
 }
 
@@ -195,6 +197,7 @@ function Tracking.setup(opts)
     sa.search = opts_sa.search or sa.search
     sa.tutorial = opts_sa.tutorial or sa.tutorial
     sa.visual = opts_sa.visual or sa.visual
+    sa.fill_in_function = opts_sa.fill_in_function or sa.fill_in_function
   end
 end
 

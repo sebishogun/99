@@ -21,8 +21,8 @@ local filetype_map = {
 }
 
 -- luacheck: ignore
---- @alias _99.Prompt.Data _99.Prompt.Data.Search | _99.Prompt.Data.Tutorial | _99.Prompt.Data.Visual | _99.Prompt.Data.Vibe
---- @alias _99.Prompt.Operation "visual" | "tutorial" | "search" | "vibe"
+--- @alias _99.Prompt.Data _99.Prompt.Data.Search | _99.Prompt.Data.Tutorial | _99.Prompt.Data.Visual | _99.Prompt.Data.Vibe | _99.Prompt.Data.FillInFunction
+--- @alias _99.Prompt.Operation "visual" | "tutorial" | "search" | "vibe" | "fill_in_function"
 --- @alias _99.Prompt.QFixOperation "search" | "vibe"
 --- @alias _99.Prompt.EndingState "failed" | "success" | "cancelled"
 --- @alias _99.Prompt.State "ready" | "requesting" | _99.Prompt.EndingState
@@ -53,6 +53,12 @@ local filetype_map = {
 --- @field window number
 --- @field xid number TODO: we should probably get rid of this.  The request pattern is not quite correct
 --- @field tutorial string[]
+
+--- @class _99.Prompt.Data.FillInFunction
+--- @field type "fill_in_function"
+--- @field buffer number
+--- @field file_type string
+--- @field range _99.Range | nil
 
 --- @class _99.Prompt
 --- @field md_file_names string[]
@@ -234,6 +240,30 @@ function Prompt.search(_99)
   return context
 end
 
+--- @param _99 _99.State
+--- @return _99.Prompt
+function Prompt.fill_in_function(_99)
+  _99:refresh_rules()
+
+  local file_type = vim.bo[0].ft
+  local buffer = vim.api.nvim_get_current_buf()
+  file_type = filetype_map[file_type] or file_type
+
+  --- @type _99.Prompt
+  local context = setmetatable({}, Prompt)
+  set_defaults(context, _99)
+  context.operation = "fill_in_function"
+  context.data = {
+    type = "fill_in_function",
+    buffer = buffer,
+    file_type = file_type,
+    range = nil,
+  }
+  context.logger:debug("99 Request", "method", "fill_in_function")
+
+  return context
+end
+
 --- @param obs _99.Providers.Observer | nil
 function Prompt:_observer(obs)
   return {
@@ -269,6 +299,7 @@ local allowed_context_types = {
   "search",
   "tutorial",
   "vibe",
+  "fill_in_function",
 }
 --- @return boolean
 function Prompt:valid()
@@ -362,6 +393,15 @@ function Prompt:search_data()
     "you cannot get search data if its not type search"
   )
   return self.data --[[@as _99.Prompt.Data.Search]]
+end
+
+--- @return _99.Prompt.Data.FillInFunction
+function Prompt:fill_in_function_data()
+  assert(
+    self.data.type == "fill_in_function",
+    "you cannot get fill_in_function data if its not that type"
+  )
+  return self.data --[[@as _99.Prompt.Data.FillInFunction]]
 end
 
 --- @return _99.Search.Result[]
@@ -506,6 +546,7 @@ function Prompt:finalize()
     self.operation == "visual"
     or self.operation == "tutorial"
     or self.operation == "search"
+    or self.operation == "fill_in_function"
   then
     table.insert(self.agent_context, self._99.prompts.only_tmp_file_change())
   end

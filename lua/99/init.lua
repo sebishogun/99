@@ -433,6 +433,24 @@ function _99.visual(opts)
   return context.xid
 end
 
+--- @param opts _99.ops.Opts?
+--- @return _99.TraceID | nil
+function _99.fill_in_function(opts)
+  local o = process_opts(opts)
+  local context = Prompt.fill_in_function(_99_state)
+  ops.fill_in_function(context, o)
+  return context.xid
+end
+
+--- @param opts _99.ops.Opts?
+--- @return _99.TraceID
+function _99.fill_in_function_prompt(opts)
+  local o = process_opts(opts)
+  local context = Prompt.fill_in_function(_99_state)
+  capture_prompt(ops.fill_in_function, "Fill In Function", context, o)
+  return context.xid
+end
+
 function _99.view_logs()
   local requests = _99_state.tracking.history
   local str_requests = Tracking.to_selectable_list(requests)
