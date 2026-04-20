@@ -278,6 +278,71 @@ function _99.info()
   Window.display_centered_message(info)
 end
 
+function _99.doctor()
+  local state = _99.__get_state()
+  local provider = _99.get_provider()
+  local provider_name = provider._get_provider_name and provider:_get_provider_name()
+    or "unknown"
+  local lines = {
+    "99 Doctor",
+    "",
+    string.format("Provider: %s", provider_name),
+    string.format("Model: %s", state.model or "<unset>"),
+    "",
+  }
+
+  local checks = {
+    { name = "opencode", ok = vim.fn.executable("opencode") == 1 },
+    { name = "claude", ok = vim.fn.executable("claude") == 1 },
+    { name = "copilot", ok = vim.fn.executable("copilot") == 1 },
+    { name = "gemini", ok = vim.fn.executable("gemini") == 1 },
+    { name = "codex", ok = vim.fn.executable("codex") == 1 },
+  }
+
+  table.insert(lines, "CLI availability:")
+  for _, check in ipairs(checks) do
+    table.insert(
+      lines,
+      string.format("  %s: %s", check.name, check.ok and "ok" or "missing")
+    )
+  end
+
+  local tmp = vim.fn.stdpath("cache") .. "/99-doctor-write-test"
+  local file = io.open(tmp, "w")
+  local writable = file ~= nil
+  if file then
+    file:write("ok")
+    file:close()
+    os.remove(tmp)
+  end
+
+  table.insert(lines, "")
+  table.insert(
+    lines,
+    string.format("Temp path writable: %s", writable and "ok" or "no")
+  )
+
+  local bufnr = vim.api.nvim_get_current_buf()
+  local ft = vim.bo[bufnr].ft
+  if ft == "typescriptreact" then
+    ft = "typescript"
+  end
+
+  local parser_ok = pcall(vim.treesitter.get_parser, bufnr, ft)
+  local query_ok = pcall(vim.treesitter.query.get, ft, "99-function")
+
+  table.insert(
+    lines,
+    string.format("Treesitter parser (%s): %s", ft, parser_ok and "ok" or "missing")
+  )
+  table.insert(
+    lines,
+    string.format("99-function query (%s): %s", ft, query_ok and "ok" or "missing")
+  )
+
+  Window.display_centered_message(lines)
+end
+
 --     elseif #tutorials == 1 then
 --       local data = tutorials[1]
 --       assert(data, "tutorial is malformed")

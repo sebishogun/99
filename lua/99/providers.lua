@@ -297,6 +297,61 @@ function KiroProvider._get_default_model()
   return "claude-sonnet-4.5"
 end
 
+--- @class CopilotCLIProvider : _99.Providers.BaseProvider
+local CopilotCLIProvider = setmetatable({}, { __index = BaseProvider })
+
+--- @param query string
+--- @param context _99.Prompt
+--- @return string[]
+function CopilotCLIProvider._build_command(_, query, context)
+  return {
+    "copilot",
+    "-p",
+    query,
+    "--model",
+    context.model,
+    "--silent",
+    "--yolo",
+  }
+end
+
+--- @return string
+function CopilotCLIProvider._get_provider_name()
+  return "CopilotCLIProvider"
+end
+
+--- @return string
+function CopilotCLIProvider._get_default_model()
+  return "claude-opus-4.6"
+end
+
+--- @class CodexProvider : _99.Providers.BaseProvider
+local CodexProvider = setmetatable({}, { __index = BaseProvider })
+
+--- @param query string
+--- @param context _99.Prompt
+--- @return string[]
+function CodexProvider._build_command(_, query, context)
+  return {
+    "codex",
+    "exec",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "-m",
+    context.model,
+    query,
+  }
+end
+
+--- @return string
+function CodexProvider._get_provider_name()
+  return "CodexProvider"
+end
+
+--- @return string
+function CodexProvider._get_default_model()
+  return "gpt-codex-5.3"
+end
+
 --- @class GeminiCLIProvider : _99.Providers.BaseProvider
 local GeminiCLIProvider = setmetatable({}, { __index = BaseProvider })
 
@@ -335,5 +390,7 @@ return {
   ClaudeCodeProvider = ClaudeCodeProvider,
   CursorAgentProvider = CursorAgentProvider,
   KiroProvider = KiroProvider,
+  CopilotCLIProvider = CopilotCLIProvider,
+  CodexProvider = CodexProvider,
   GeminiCLIProvider = GeminiCLIProvider,
 }
