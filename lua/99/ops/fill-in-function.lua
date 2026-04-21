@@ -46,6 +46,7 @@ local function containing_function(context)
   local func = {
     function_range = found_range,
     body_range = nil,
+    inline_brace_body = false,
   }
   for id, node, _ in query:iter_captures(root, buffer, 0, -1, { all = true }) do
     if query.captures[id] == "context.body" then
@@ -60,10 +61,19 @@ local function containing_function(context)
 
   if not func.body_range then
     local row = func.function_range.end_.row
+    local col = 1
+    local function_text = func.function_range:to_text()
+    if func.function_range.start.row == func.function_range.end_.row then
+      local closing = function_text:match(".*()}")
+      if closing then
+        col = func.function_range.start.col + closing - 1
+        func.inline_brace_body = true
+      end
+    end
     func.body_range = Range:new(
       buffer,
-      Point:from_1_based(row, 1),
-      Point:from_1_based(row, 1)
+      Point:from_1_based(row, col),
+      Point:from_1_based(row, col)
     )
   end
 
@@ -104,7 +114,11 @@ return function(context, opts)
       return
     end
     local lines = vim.split(response, "\n")
-    if func.body_range.start:eq(func.body_range.end_) then
+    if func.inline_brace_body then
+      lines = vim.list_extend({ "" }, lines)
+      table.insert(lines, "")
+    end
+    if func.body_range.start:eq(func.body_range.end_) and not func.inline_brace_body then
       local existing = func.body_range.start:line(data.buffer)
       if existing and existing ~= "" then
         table.insert(lines, "")
