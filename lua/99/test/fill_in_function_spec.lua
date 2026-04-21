@@ -31,4 +31,20 @@ describe("fill_in_function", function()
   it("exposes fill_in_function_prompt", function()
     eq("function", type(_99.fill_in_function_prompt))
   end)
+
+  it("includes additional prompt text in the provider query", function()
+    local content = {
+      "local foo = function()",
+      "end",
+    }
+    local provider = test_utils.test_setup(content, 1, 18, "lua")
+
+    _99.fill_in_function({
+      additional_prompt = "Use the existing naming style and keep it concise.",
+    })
+
+    local request = assert(provider.request)
+    assert.is_truthy(request.query:find("Use the existing naming style", 1, true))
+    assert.is_truthy(request.query:find("Implement the function body", 1, true))
+  end)
 end)

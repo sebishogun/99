@@ -30,6 +30,14 @@ of information.  In the beginning and the original youtube video was about repla
 specific pieces of code.  The more i use 99 the more i realize the better use is
 through `search` and `work`
 
+This branch also restores direct editing helpers on top of the current upstream
+architecture:
+
+- `fill_in_function()`
+- `fill_in_function_prompt()`
+- `doctor()`
+- extra providers for Copilot CLI and Codex CLI
+
 ### Basic Setup
 ```lua
 	{
@@ -121,6 +129,14 @@ through `search` and `work`
 				_99.visual()
 			end)
 
+			vim.keymap.set("n", "<leader>9f", function()
+				_99.fill_in_function()
+			end)
+
+			vim.keymap.set("n", "<leader>9F", function()
+				_99.fill_in_function_prompt()
+			end)
+
             --- if you have a request you dont want to make any changes, just cancel it
 			vim.keymap.set("n", "<leader>9x", function()
 				_99.stop_all_requests()
@@ -150,6 +166,9 @@ See search for more details
 | `vibe` | `fun(opts?: _99.ops.Opts): _99.TraceID \| nil` | - |
 | `open` | `fun(): nil` | - |
 | `visual` | `fun(opts: _99.ops.Opts): _99.TraceID` | - |
+| `fill_in_function` | `fun(opts?: _99.ops.Opts): _99.TraceID \| nil` | - |
+| `fill_in_function_prompt` | `fun(opts?: _99.ops.Opts): _99.TraceID` | - |
+| `doctor` | `fun(): nil` | - |
 | `view_logs` | `fun(): nil` | - |
 | `stop_all_requests` | `fun(): nil` | - |
 | `clear_previous_requests` | `fun(): nil` | - |
@@ -178,6 +197,18 @@ the tutorial window.
 #### visual
 takes your current selection and sends that along with the prompt provided and replaces
 your visual selection with the results
+
+#### fill_in_function
+implements the current function body in place using the current provider while keeping
+tracking, logging, and prompt handling on the upstream request architecture.
+
+#### fill_in_function_prompt
+same as `fill_in_function`, but captures an extra instruction first and injects it into
+the provider prompt.
+
+#### doctor
+prints a small readiness report for provider CLI availability, temp file writes, and
+treesitter function-query support.
 
 #### view_logs
 views the most recent logs and setups the machine to view older and new logs
@@ -230,6 +261,7 @@ No description.
 | `in_flight_options` | `_99.InFlight.Opts \| nil` | - |
 | `md_files` | `string[] \| nil` | - |
 | `provider` | `_99.Providers.BaseProvider \| nil` | - |
+| `provider_extra_args` | `string[] \| nil` | - |
 | `display_errors` | `boolean \| nil` | - |
 | `auto_add_skills` | `boolean \| nil` | - |
 | `completion` | `_99.Completion \| nil` | - |
@@ -251,6 +283,9 @@ No description.
 
 #### provider
 No description.
+
+#### provider_extra_args
+extra CLI arguments appended to the selected provider command.
 
 #### display_errors
 No description.
@@ -435,6 +470,8 @@ Referenced content is automatically resolved and injected into the AI context. N
 | `OpenCodeProvider` (default) | `opencode` | `opencode/claude-sonnet-4-5` |
 | `ClaudeCodeProvider` | `claude` | `claude-sonnet-4-5` |
 | `CursorAgentProvider` | `cursor-agent` | `sonnet-4.5` |
+| `CopilotCLIProvider` | `copilot` | `claude-opus-4.6` |
+| `CodexProvider` | `codex` | `gpt-codex-5.3` |
 | `GeminiCLIProvider` | `gemini` | `auto` |
 
 ```lua
@@ -497,4 +534,3 @@ To get the _last_ run's logs execute `:lua require("99").view_logs()`.
 ### Dont forget
 If there are secrets or other information in the logs you want to be removed make
 sure that you delete the `query` printing. This will likely contain information you may not want to share.
-
