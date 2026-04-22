@@ -12,6 +12,7 @@ local Extensions = require("99.extensions")
 local Agents = require("99.extensions.agents")
 local Providers = require("99.providers")
 local time = require("99.time")
+local Throbber = require("99.ops.throbber")
 
 ---@param path_or_rule string | _99.Agents.Rule
 ---@return _99.Agents.Rule | string
@@ -54,12 +55,14 @@ end
 --- @class _99.ActiveRequest
 --- @field clean_up _99.Cleanup
 --- @field request_id number
+--- @field name string
 
 --- @class _99.StateProps
 --- @field model string
 --- @field md_files string[]
 --- @field prompts _99.Prompts
 --- @field ai_stdout_rows number
+--- @field show_in_flight_requests boolean
 --- @field languages string[]
 --- @field display_errors boolean
 --- @field auto_add_skills boolean
@@ -76,7 +79,19 @@ local function create_99_state()
     md_files = {},
     prompts = require("99.prompt-settings"),
     ai_stdout_rows = 3,
-    languages = { "lua", "go", "java", "elixir", "cpp", "ruby", "rust", "python", "zig", "typescript" },
+    show_in_flight_requests = false,
+    languages = {
+      "lua",
+      "go",
+      "java",
+      "elixir",
+      "cpp",
+      "ruby",
+      "rust",
+      "python",
+      "zig",
+      "typescript",
+    },
     display_errors = false,
     provider_override = nil,
     auto_add_skills = false,
@@ -90,10 +105,12 @@ end
 --- @class _99.Completion
 --- @field source "cmp" | nil
 --- @field custom_rules string[]
+--- @field files _99.Files.Config?
 
 --- @class _99.Options
 --- @field logger _99.Logger.Options?
 --- @field model string?
+--- @field show_in_flight_requests boolean?
 --- @field md_files string[]?
 --- @field provider _99.Providers.BaseProvider?
 --- @field debug_log_prefix string?
@@ -111,6 +128,9 @@ end
 --- @field ai_stdout_rows number
 --- @field languages string[]
 --- @field display_errors boolean
+--- @field show_in_flight_requests boolean
+--- @field show_in_flight_requests_window _99.window.Window | nil
+--- @field show_in_flight_requests_throbber _99.Throbber | nil
 --- @field provider_override _99.Providers.BaseProvider?
 --- @field auto_add_skills boolean
 --- @field rules _99.Agents.Rules
@@ -118,6 +138,7 @@ end
 --- @field __view_log_idx number
 --- @field __request_history _99.RequestEntry[]
 --- @field __request_by_id table<number, _99.RequestEntry>
+--- @field __active_marks _99.Mark[]
 local _99_State = {}
 _99_State.__index = _99_State
 
@@ -206,15 +227,22 @@ end
 local _active_request_id = 0
 ---@param clean_up _99.Cleanup
 ---@param request_id number
+---@param name string
 ---@return number
-function _99_State:add_active_request(clean_up, request_id)
+function _99_State:add_active_request(clean_up, request_id, name)
   _active_request_id = _active_request_id + 1
   Logger:debug("adding active request", "id", _active_request_id)
   self.__active_requests[_active_request_id] = {
     clean_up = clean_up,
     request_id = request_id,
+    name = name,
   }
   return _active_request_id
+end
+
+--- @param mark _99.Mark
+function _99_State:add_mark(mark)
+  table.insert(self.__active_marks, mark)
 end
 
 function _99_State:active_request_count()
@@ -254,26 +282,45 @@ local function set_selection_marks()
   )
 end
 
---- @param cb fun(ok: boolean, o: _99.ops.Opts?): nil
+--- @param cb fun(context: _99.RequestContext, o: _99.ops.Opts?): nil
+--- @param name string
 --- @param context _99.RequestContext
 --- @param opts _99.ops.Opts
---- @return fun(ok: boolean, response: string): nil
-local function wrap_window_capture(cb, context, opts)
-  --- @param ok boolean
-  --- @param response string
-  return function(ok, response)
-    context.logger:debug("capture_prompt", "success", ok, "response", response)
-    if not ok then
-      return cb(false)
-    end
-    local rules_and_names = Agents.by_name(_99_state.rules, response)
-    opts.additional_rules = opts.additional_rules or {}
-    for _, r in ipairs(rules_and_names.rules) do
-      table.insert(opts.additional_rules, r)
-    end
-    opts.additional_prompt = response
-    cb(true, opts)
-  end
+local function capture_prompt(cb, name, context, opts)
+  Window.capture_input(name, {
+    --- @param ok boolean
+    --- @param response string
+    cb = function(ok, response)
+      context.logger:debug(
+        "capture_prompt",
+        "success",
+        ok,
+        "response",
+        response
+      )
+      if not ok then
+        return
+      end
+      local rules_and_names = Agents.by_name(_99_state.rules, response)
+      opts.additional_rules = opts.additional_rules or {}
+      for _, r in ipairs(rules_and_names.rules) do
+        table.insert(opts.additional_rules, r)
+      end
+      opts.additional_prompt = response
+      local success, err = pcall(cb, context, opts)
+      if not success then
+        context.logger:error("capture_prompt failed", "error", tostring(err))
+        vim.notify(
+          "99: " .. name .. " failed: " .. tostring(err),
+          vim.log.levels.ERROR
+        )
+      end
+    end,
+    on_load = function()
+      Extensions.setup_buffer(_99_state)
+    end,
+    rules = _99_state.rules,
+  })
 end
 
 --- @param operation_name string
@@ -308,7 +355,8 @@ function _99.doctor()
   local lines = { "99 Doctor", "" }
   local state = _99.__get_state()
   local provider = state.provider_override or Providers.OpenCodeProvider
-  local provider_name = provider._get_provider_name and provider:_get_provider_name()
+  local provider_name = provider._get_provider_name
+      and provider:_get_provider_name()
     or "unknown"
 
   table.insert(lines, string.format("Provider: %s", provider_name))
@@ -325,7 +373,10 @@ function _99.doctor()
 
   table.insert(lines, "CLI availability:")
   for _, check in ipairs(checks) do
-    table.insert(lines, string.format("  %s: %s", check.name, check.ok and "ok" or "missing"))
+    table.insert(
+      lines,
+      string.format("  %s: %s", check.name, check.ok and "ok" or "missing")
+    )
   end
 
   local tmp = vim.fn.stdpath("cache") .. "/99-doctor-write-test"
@@ -338,7 +389,10 @@ function _99.doctor()
   end
 
   table.insert(lines, "")
-  table.insert(lines, string.format("Temp path writable: %s", writable and "ok" or "no"))
+  table.insert(
+    lines,
+    string.format("Temp path writable: %s", writable and "ok" or "no")
+  )
 
   local bufnr = vim.api.nvim_get_current_buf()
   local ft = vim.bo[bufnr].ft
@@ -349,8 +403,22 @@ function _99.doctor()
   local parser_ok = pcall(vim.treesitter.get_parser, bufnr, ft)
   local query_ok = pcall(vim.treesitter.query.get, ft, "99-function")
 
-  table.insert(lines, string.format("Treesitter parser (%s): %s", ft, parser_ok and "ok" or "missing"))
-  table.insert(lines, string.format("99-function query (%s): %s", ft, query_ok and "ok" or "missing"))
+  table.insert(
+    lines,
+    string.format(
+      "Treesitter parser (%s): %s",
+      ft,
+      parser_ok and "ok" or "missing"
+    )
+  )
+  table.insert(
+    lines,
+    string.format(
+      "99-function query (%s): %s",
+      ft,
+      query_ok and "ok" or "missing"
+    )
+  )
 
   Window.display_centered_message(lines)
 end
@@ -362,66 +430,58 @@ function _99:rule_from_path(path)
   return Agents.get_rule_by_path(_99_state.rules, path)
 end
 
---- @param opts? _99.ops.Opts
-function _99.fill_in_function_prompt(opts)
-  opts = process_opts(opts)
-  local context = get_context("fill-in-function-with-prompt")
-
-  context.logger:debug("start")
-  Window.capture_input({
-    cb = wrap_window_capture(function(ok, o)
-      if not ok then
-        return
-      end
-      assert(o ~= nil, "if ok, then opts must exist")
-      ops.fill_in_function(context, o)
-    end, context, opts),
-    on_load = function()
-      Extensions.setup_buffer(_99_state)
-    end,
-    rules = _99_state.rules,
-  })
+--- @param opts? _99.ops.SearchOpts
+function _99.search(opts)
+  local o = process_opts(opts) --[[ @as _99.ops.SearchOpts ]]
+  local context = get_context("search")
+  if o.additional_prompt then
+    ops.search(context, o)
+    return
+  else
+    capture_prompt(ops.search, "Search", context, o)
+  end
 end
 
---- @param opts? _99.ops.Opts
+--- @param opts _99.ops.Opts?
 function _99.fill_in_function(opts)
   opts = process_opts(opts)
-  ops.fill_in_function(get_context("fill_in_function"), opts)
+  local context = get_context("fill_in_function")
+  ops.fill_in_function(context, opts)
 end
 
---- @param opts _99.ops.Opts
+--- @param opts _99.ops.Opts?
+function _99.fill_in_function_prompt(opts)
+  opts = process_opts(opts)
+  local context = get_context("fill_in_function")
+  capture_prompt(ops.fill_in_function, "Fill In Function", context, opts)
+end
+
+--- @param opts _99.ops.Opts?
 function _99.visual_prompt(opts)
   opts = process_opts(opts)
-  local context = get_context("over-range-with-prompt")
-  context.logger:debug("start")
-  Window.capture_input({
-    cb = wrap_window_capture(function(ok, o)
-      if not ok then
-        return
-      end
-      assert(o ~= nil, "if ok, then opts must exist")
-      _99.visual(context, o)
-    end, context, opts),
-    on_load = function()
-      Extensions.setup_buffer(_99_state)
-    end,
-    rules = _99_state.rules,
-  })
+  local context = get_context("visual")
+  local function perform_range()
+    set_selection_marks()
+    local range = Range.from_visual_selection()
+    ops.over_range(context, range, opts)
+  end
+  capture_prompt(perform_range, "Visual", context, opts)
 end
 
---- @param context _99.RequestContext?
 --- @param opts _99.ops.Opts?
-function _99.visual(context, opts)
+function _99.visual(opts)
   opts = process_opts(opts)
-  --- TODO: Talk to teej about this.
-  --- Visual selection marks are only set in place post visual selection.
-  --- that means for this function to work i must escape out of visual mode
-  --- which i dislike very much.  because maybe you dont want this
-  set_selection_marks()
-
-  context = context or get_context("over-range")
-  local range = Range.from_visual_selection()
-  ops.over_range(context, range, opts)
+  local context = get_context("visual")
+  local function perform_range()
+    set_selection_marks()
+    local range = Range.from_visual_selection()
+    ops.over_range(context, range, opts)
+  end
+  if opts.additional_prompt then
+    perform_range()
+  else
+    capture_prompt(perform_range, "Visual", context, opts)
+  end
 end
 
 --- View all the logs that are currently cached.  Cached log count is determined
@@ -464,6 +524,13 @@ function _99.stop_all_requests()
   _99_state.__active_requests = {}
 end
 
+function _99.clear_all_marks()
+  for _, mark in ipairs(_99_state.__active_marks or {}) do
+    mark:delete()
+  end
+  _99_state.__active_marks = {}
+end
+
 function _99.previous_requests_to_qfix()
   local items = {}
   for _, entry in ipairs(_99_state.__request_history) do
@@ -488,11 +555,66 @@ function _99.__get_state()
   return _99_state
 end
 
+local function shut_down_in_flight_requests_window()
+  if _99_state.show_in_flight_requests_throbber then
+    _99_state.show_in_flight_requests_throbber:stop()
+  end
+
+  local win = _99_state.show_in_flight_requests_window
+  if win ~= nil then
+    Window.close(win)
+  end
+  _99_state.show_in_flight_requests_window = nil
+  _99_state.show_in_flight_requests_throbber = nil
+end
+
+local function show_in_flight_requests()
+  if _99_state.show_in_flight_requests == false then
+    return
+  end
+  vim.defer_fn(show_in_flight_requests, 1000)
+
+  Window.refresh_active_windows()
+  local current_win = _99_state.show_in_flight_requests_window
+  if current_win ~= nil and not Window.is_active_window(current_win) then
+    shut_down_in_flight_requests_window()
+  end
+
+  if Window.has_active_windows() or _99_state:active_request_count() == 0 then
+    return
+  end
+
+  if _99_state.show_in_flight_requests_window == nil then
+    local win = Window.status_window()
+    local throb = Throbber.new(function(throb)
+      local count = _99_state:active_request_count()
+      if count == 0 or not Window.valid(win) then
+        return shut_down_in_flight_requests_window()
+      end
+
+      local lines = {
+        throb .. " requests(" .. tostring(count) .. ") " .. throb,
+      }
+      for _, r in pairs(_99_state.__active_requests) do
+        table.insert(lines, r.name)
+      end
+
+      Window.resize(win, #lines[1], #lines)
+      vim.api.nvim_buf_set_lines(win.buf_id, 0, 1, false, lines)
+    end)
+    _99_state.show_in_flight_requests_window = win
+    _99_state.show_in_flight_requests_throbber = throb
+
+    throb:start()
+  end
+end
+
 --- @param opts _99.Options?
 function _99.setup(opts)
   opts = opts or {}
 
   _99_state = _99_State.new()
+  _99_state.show_in_flight_requests = opts.show_in_flight_requests or false
   _99_state.provider_override = opts.provider
   _99_state.completion = opts.completion
     or {
@@ -501,6 +623,7 @@ function _99.setup(opts)
     }
   _99_state.completion.custom_rules = _99_state.completion.custom_rules or {}
   _99_state.auto_add_skills = opts.auto_add_skills or false
+  _99_state.completion.files = _99_state.completion.files or {}
 
   local crules = _99_state.completion.custom_rules
   for i, rule in ipairs(crules) do
@@ -538,6 +661,11 @@ function _99.setup(opts)
   _99_state:refresh_rules()
   Languages.initialize(_99_state)
   Extensions.init(_99_state)
+  Extensions.capture_project_root()
+
+  if _99_state.show_in_flight_requests then
+    show_in_flight_requests()
+  end
 end
 
 --- @param md string
@@ -574,5 +702,4 @@ function _99.__debug()
 end
 
 _99.Providers = Providers
-
 return _99

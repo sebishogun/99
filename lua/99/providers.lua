@@ -142,7 +142,15 @@ local OpenCodeProvider = setmetatable({}, { __index = BaseProvider })
 --- @param request _99.Request
 --- @return string[]
 function OpenCodeProvider._build_command(_, query, request)
-  return { "opencode", "run", "--agent", "neovim", "-m", request.context.model, query }
+  return {
+    "opencode",
+    "run",
+    "--agent",
+    "neovim",
+    "-m",
+    request.context.model,
+    query,
+  }
 end
 
 --- @return string
@@ -241,8 +249,10 @@ local CopilotCLIProvider = setmetatable({}, { __index = BaseProvider })
 function CopilotCLIProvider._build_command(_, query, request)
   return {
     "copilot",
-    "-p", query,
-    "--model", request.context.model,
+    "-p",
+    query,
+    "--model",
+    request.context.model,
     "--silent",
     "--yolo",
   }
@@ -269,9 +279,11 @@ local GeminiProvider = setmetatable({}, { __index = BaseProvider })
 function GeminiProvider._build_command(_, query, request)
   return {
     "gemini",
-    "--yolo",           -- Auto-accept all actions
-    "-o", "text",       -- Plain text output
-    "-m", request.context.model,
+    "--yolo", -- Auto-accept all actions
+    "-o",
+    "text", -- Plain text output
+    "-m",
+    request.context.model,
     query,
   }
 end
@@ -299,7 +311,8 @@ function CodexProvider._build_command(_, query, request)
     "codex",
     "exec",
     "--dangerously-bypass-approvals-and-sandbox",
-    "-m", request.context.model,
+    "-m",
+    request.context.model,
     query,
   }
 end
@@ -314,6 +327,34 @@ function CodexProvider._get_default_model()
   return "gpt-codex-5.3"
 end
 
+--- @class GitLabDuoProvider : _99.Providers.BaseProvider
+--- GitLab Duo CLI provider using `duo` command (headless mode)
+--- Install: npm install -g @gitlab/duo-cli
+--- Auth: Run `duo` once to set up GitLab token
+local GitLabDuoProvider = setmetatable({}, { __index = BaseProvider })
+
+--- @param query string
+--- @param request _99.Request
+--- @return string[]
+function GitLabDuoProvider._build_command(_, query, _request)
+  return {
+    "duo",
+    "run",
+    "--goal",
+    query,
+  }
+end
+
+--- @return string
+function GitLabDuoProvider._get_provider_name()
+  return "GitLabDuoProvider"
+end
+
+--- @return string
+function GitLabDuoProvider._get_default_model()
+  return "gitlab-duo"
+end
+
 return {
   OpenCodeProvider = OpenCodeProvider,
   ClaudeCodeProvider = ClaudeCodeProvider,
@@ -322,4 +363,5 @@ return {
   CopilotCLIProvider = CopilotCLIProvider,
   GeminiProvider = GeminiProvider,
   CodexProvider = CodexProvider,
+  GitLabDuoProvider = GitLabDuoProvider,
 }

@@ -29,7 +29,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     "sebishogun/99",
     config = function()
         local _99 = require("99")
-        
+
         _99.setup({
             -- Logger configuration
             logger = {
@@ -37,20 +37,20 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
                 path = "/tmp/99.debug",
                 print_on_error = true,
             },
-            
+
             -- Auto-detected provider (OpenCode > Claude > Copilot)
             -- Or explicitly set: provider = _99.Providers.OpenCodeProvider,
             -- model = "anthropic/claude-opus-4-6",
-            
+
             -- Auto-add AGENT.md files from project directories
             md_files = {
                 "AGENT.md",
                 "AGENTS.md",
             },
-            
+
             -- Display errors in virtual text
             display_errors = true,
-            
+
             -- Supported languages for treesitter operations
             languages = {
                 "lua", "go", "java", "elixir", "cpp", "ruby",
@@ -85,6 +85,46 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     end,
 }
 ```
+
+## Fresh Setup (with LazyVim-Config)
+
+If you are bootstrapping this fork with the companion LazyVim repo:
+
+```bash
+mkdir -p ~/neovim-configs
+cd ~/neovim-configs
+git clone https://github.com/sebishogun/LazyVim-Config.git LazyvimCustomConfig
+git clone https://github.com/sebishogun/99.git 99
+cd ~/neovim-configs/LazyvimCustomConfig
+./install.sh --dry-run
+./install.sh
+```
+
+Post-install checks in Neovim:
+
+```vim
+:NNStatus
+:lua require("99").doctor()
+:NNProvider <Tab>
+:NNModel <Tab>
+```
+
+## API
+
+* visual
+* search (new upstream feature)
+* debug (planned)
+
+You can see the full api at [99 API](./lua/99/init.lua)
+
+## Completions
+
+When prompting, you can reference rules and files to add context to your request.
+
+- `#` references rules — type `#` in the prompt to autocomplete rule files from your configured rule directories
+- `@` references files — type `@` to fuzzy-search project files
+
+Referenced content is automatically resolved and injected into the AI context. Requires cmp (`source = "cmp"` in your completion config).
 
 ## Keymaps
 
@@ -206,6 +246,13 @@ Languages with full treesitter query support for function detection:
 
 - Lua, Go, Java, Elixir, C++, Ruby (original)
 - Rust, Python, Zig, TypeScript (added in this fork)
+
+## Reporting a bug
+
+To report a bug, please provide the full running debug logs.
+
+### The logs
+To get the _last_ run's logs execute `:lua require("99").view_logs()`.
 
 ## Credits
 

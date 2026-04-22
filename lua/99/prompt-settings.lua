@@ -9,6 +9,10 @@ end
 --- @field visual_selection fun(range: _99.Range, filetype: string): string
 --- @field fill_in_function fun(filetype: string): string
 --- @field implement_function fun(filetype: string): string
+--- @field semantic_search fun(): string
+--- @field prompt fun(prompt: string, action: string, name?: string): string
+--- @field role fun(): string
+--- @field read_tmp fun(): string
 local prompts = {
   --- System role prompt - sets the AI's persona
   --- @return string
@@ -22,19 +26,46 @@ You ALWAYS return ONLY raw code - no markdown fences, no explanations, no conver
   --- @param filetype string The programming language (e.g., "lua", "rust", "go")
   --- @return string
   fill_in_function = function(filetype)
-    return string.format([[
+    return string.format(
+      [[
 You are given a function to implement in %s.
 
 TASK: Create the complete function body.
 
 RULES:
-1. Return ONLY the complete function including its signature
-2. Do NOT include any text before or after the function
-3. Do NOT wrap code in markdown fences (no ```%s or ``` blocks)
-4. Do NOT include explanations or comments about what you did
-5. If the function already has partial contents, use those as context
-6. Check the file for helper functions, types, or context you can use
-7. Write idiomatic %s code following best practices
+1. Do NOT wrap code in markdown fences (no ```%s or ``` blocks)
+2. Do NOT include explanations or comments about what you did
+3. If the function already has partial contents, use those as context
+4. Check the file for helper functions, types, or context you can use
+5. Write idiomatic %s code following best practices
+6. Keep modifiers/signature details present in the input (e.g. export/async/public)
+
+IMPORTS: If the function needs imports/requires that are NOT already in the file,
+output them FIRST, then output the exact line "---99-IMPORTS-END---",
+then output the function. If no new imports are needed, just output the function directly.
+
+<Example language="go">
+<Input>
+func ParseConfig(path string) (*Config, error) {
+}
+</Input>
+<Output>
+import "encoding/json"
+import "os"
+---99-IMPORTS-END---
+func ParseConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+</Output>
+</Example>
 
 <Example language="typescript">
 <Input>
@@ -56,21 +87,58 @@ export function fizz_buzz(count: number): void {
   }
 }
 </Output>
-<Notes>
-- Keep modifiers/signature details present in the input (e.g. export/async/public)
-- Return ONLY the function, nothing else
-</Notes>
+<Notes>No new imports needed, so no ---99-IMPORTS-END--- marker.</Notes>
 </Example>
 
 If there are DIRECTIONS provided, follow them precisely. Do not deviate.
-]], filetype or "the given language", filetype or "", filetype or "the given language")
+]],
+      filetype or "the given language",
+      filetype or "",
+      filetype or "the given language"
+    )
+  end,
+
+  semantic_search = function()
+    return [[
+you are given a prompt and you must search through this project and return code that matches the description provided.
+<Rule>You must provide output without any commentary, just text locations</Rule>
+<Rule>Text locations are in the format of: /path/to/file.ext:lnum:cnum,X,NOTES
+lnum = starting line number 1 based
+cnum = starting column number 1 based
+X = how many lines should be highlighted
+NOTES = A text description of why this highlight is important
+</Rule>
+<Rule>NOTES cannot have new lines</Rule>
+<Rule>You must adhere to the output format</Rule>
+<Rule>Double check output format before writing it to the file</Rule>
+<Rule>Each location is separated by new lines</Rule>
+<Rule>Each path is specified in absolute pathing</Rule>
+<Rule>You can provide notes you think are relevant per location</Rule>
+<Example>
+You have found 3 locations in files foo.js, bar.js, and baz.js.
+There are 2 locations in foo.js, 1 in bar.js and baz.js.
+<Output>
+/path/to/project/src/foo.js:24:8,3,Some notes here about some stuff, it can contain commas
+/path/to/project/src/foo.js:71:12,7,more notes, everything is great!
+/path/to/project/src/bar.js:13:2,1,more notes again, this time specfically about bar and why bar is so important
+/path/to/project/src/baz.js:1:1,52,Notes about why baz is very important to the results
+</Output>
+<Meaning>
+This means that the search results found
+foo.js at line 24, char 8 and the next 2 lines
+foo.js at line 71, char 12 and the next 6 lines
+bar.js at line 13, char 2
+baz.js at line 1, char 1 and the next 51 lines
+</Meaning>
+]]
   end,
 
   --- Implement function at call site prompt
   --- @param filetype string The programming language
   --- @return string
   implement_function = function(filetype)
-    return string.format([[
+    return string.format(
+      [[
 You are given a function call in %s that references a function which does not exist yet.
 
 TASK: Implement the missing function based on how it is being called.
@@ -85,7 +153,11 @@ RULES:
 7. Include appropriate error handling if the language supports it
 
 If there are DIRECTIONS provided, follow them precisely.
-]], filetype or "the given language", filetype or "", filetype or "the given language")
+]],
+      filetype or "the given language",
+      filetype or "",
+      filetype or "the given language"
+    )
   end,
 
   --- Output file instructions
@@ -104,18 +176,22 @@ CRITICAL OUTPUT RULES:
   --- Wrap user prompt with action context
   --- @param prompt string User's directions
   --- @param action string The action/context prompt
+  --- @param name? string defaults to DIRECTIONS
   --- @return string
-  prompt = function(prompt, action)
+  prompt = function(prompt, action, name)
+    name = name or "DIRECTIONS"
     return string.format(
       [[
-<DIRECTIONS>
+<%s>
 %s
-</DIRECTIONS>
+</%s>
 <Context>
 %s
 </Context>
 ]],
+      name,
       prompt,
+      name,
       action
     )
   end,
@@ -130,7 +206,13 @@ CRITICAL OUTPUT RULES:
     local start_col = range.start.col
     local end_line = range.end_.row
     local end_col = range.end_.col
-    local location = string.format("Lines %d:%d to %d:%d", start_line, start_col, end_line, end_col)
+    local location = string.format(
+      "Lines %d:%d to %d:%d",
+      start_line,
+      start_col,
+      end_line,
+      end_col
+    )
 
     return string.format(
       [[
@@ -167,7 +249,14 @@ If there are DIRECTIONS provided, follow them precisely.
   end,
 
   -- luacheck: ignore 631
-  read_tmp = "Never attempt to read TEMP_FILE. It is purely for output. Previous contents can be overwritten without concern.",
+  read_tmp = function()
+    return [[
+never attempt to read TEMP_FILE.
+It is purely for output.
+Previous contents, which may not exist, can be written over without worry
+After writing TEMP_FILE once you should be done.  Be done and end the session.
+]]
+  end,
 }
 
 --- @class _99.Prompts
@@ -180,7 +269,7 @@ local prompt_settings = {
     return string.format(
       "<OutputInstructions>\n%s\n%s\n</OutputInstructions>\n<TEMP_FILE>%s</TEMP_FILE>",
       prompts.output_file(),
-      prompts.read_tmp,
+      prompts.read_tmp(),
       tmp_file
     )
   end,
