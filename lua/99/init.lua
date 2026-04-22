@@ -281,7 +281,8 @@ end
 function _99.doctor()
   local state = _99.__get_state()
   local provider = _99.get_provider()
-  local provider_name = provider._get_provider_name and provider:_get_provider_name()
+  local provider_name = provider._get_provider_name
+      and provider:_get_provider_name()
     or "unknown"
   local lines = {
     "99 Doctor",
@@ -333,11 +334,19 @@ function _99.doctor()
 
   table.insert(
     lines,
-    string.format("Treesitter parser (%s): %s", ft, parser_ok and "ok" or "missing")
+    string.format(
+      "Treesitter parser (%s): %s",
+      ft,
+      parser_ok and "ok" or "missing"
+    )
   )
   table.insert(
     lines,
-    string.format("99-function query (%s): %s", ft, query_ok and "ok" or "missing")
+    string.format(
+      "99-function query (%s): %s",
+      ft,
+      query_ok and "ok" or "missing"
+    )
   )
 
   Window.display_centered_message(lines)

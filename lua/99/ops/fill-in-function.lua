@@ -20,7 +20,8 @@ local function containing_function(context)
     return nil, "missing treesitter tree"
   end
 
-  local ok_query, query = pcall(vim.treesitter.query.get, file_type, "99-function")
+  local ok_query, query =
+    pcall(vim.treesitter.query.get, file_type, "99-function")
   if not ok_query or not query then
     return nil, "missing 99-function query"
   end
@@ -51,7 +52,9 @@ local function containing_function(context)
   for id, node, _ in query:iter_captures(root, buffer, 0, -1, { all = true }) do
     if query.captures[id] == "context.body" then
       local range = Range:from_ts_node(node, buffer)
-      if found_range:contains(range.start) and found_range:contains(range.end_) then
+      if
+        found_range:contains(range.start) and found_range:contains(range.end_)
+      then
         if not func.body_range or func.body_range:area() > range:area() then
           func.body_range = range
         end
@@ -106,24 +109,29 @@ return function(context, opts)
   end
 
   context:add_prompt_content(prompt)
-  context:start_request(CleanUp.make_observer(context, function(status, response)
-    if status ~= "success" then
-      return
-    end
-    if vim.trim(response) == "" then
-      return
-    end
-    local lines = vim.split(response, "\n")
-    if func.inline_brace_body then
-      lines = vim.list_extend({ "" }, lines)
-      table.insert(lines, "")
-    end
-    if func.body_range.start:eq(func.body_range.end_) and not func.inline_brace_body then
-      local existing = func.body_range.start:line(data.buffer)
-      if existing and existing ~= "" then
+  context:start_request(
+    CleanUp.make_observer(context, function(status, response)
+      if status ~= "success" then
+        return
+      end
+      if vim.trim(response) == "" then
+        return
+      end
+      local lines = vim.split(response, "\n")
+      if func.inline_brace_body then
+        lines = vim.list_extend({ "" }, lines)
         table.insert(lines, "")
       end
-    end
-    func.body_range:replace_text(lines)
-  end))
+      if
+        func.body_range.start:eq(func.body_range.end_)
+        and not func.inline_brace_body
+      then
+        local existing = func.body_range.start:line(data.buffer)
+        if existing and existing ~= "" then
+          table.insert(lines, "")
+        end
+      end
+      func.body_range:replace_text(lines)
+    end)
+  )
 end

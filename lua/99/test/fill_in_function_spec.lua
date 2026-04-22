@@ -44,7 +44,9 @@ describe("fill_in_function", function()
     })
 
     local request = assert(provider.request)
-    assert.is_truthy(request.query:find("Use the existing naming style", 1, true))
+    assert.is_truthy(
+      request.query:find("Use the existing naming style", 1, true)
+    )
     assert.is_truthy(request.query:find("Implement the function body", 1, true))
   end)
 
