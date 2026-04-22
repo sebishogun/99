@@ -1,6 +1,14 @@
 local Levels = require("99.logger.level")
 local M = {}
 
+--- @type _99.Providers.Observer
+local DevNullObserver = {
+  on_start = function() end,
+  on_complete = function() end,
+  on_stderr = function() end,
+  on_stdout = function() end,
+}
+
 function M.next_frame()
   local next = false
   vim.schedule(function()
@@ -16,8 +24,8 @@ M.created_files = {}
 
 --- @class _99.test.ProviderRequest
 --- @field query string
---- @field request _99.Request
---- @field observer _99.Providers.Observer?
+--- @field prompt _99.Prompt
+--- @field observer _99.Providers.Observer
 --- @field logger _99.Logger
 
 --- @class _99.test.Provider : _99.Providers.BaseProvider
@@ -30,51 +38,47 @@ function TestProvider.new()
 end
 
 --- @param query string
----@param request _99.Request
+---@param prompt _99.Prompt
 ---@param observer _99.Providers.Observer?
-function TestProvider:make_request(query, request, observer)
-  local logger = request.context.logger:set_area("TestProvider")
-  logger:debug("make_request", "tmp_file", request.context.tmp_file)
+function TestProvider:make_request(query, prompt, observer)
+  local logger = prompt.logger:set_area("TestProvider")
+  logger:debug("make_request", "tmp_file", prompt.tmp_file)
+
+  observer = observer or DevNullObserver
+  observer.on_start()
+
   self.request = {
     query = query,
-    request = request,
+    prompt = prompt,
     observer = observer,
     logger = logger,
   }
 end
 
---- @param status _99.Request.ResponseState
+--- @param status _99.Prompt.EndingState
 --- @param result string
 function TestProvider:resolve(status, result)
   assert(self.request, "you cannot call resolve until make_request is called")
-  local obs = self.request.observer
-  if obs then
-    --- to match the behavior expected from the OpenCodeProvider
-    if self.request.request:is_cancelled() then
-      obs.on_complete("cancelled", result)
-    else
-      obs.on_complete(status, result)
-    end
+
+  if self.request.prompt:is_cancelled() then
+    self.request.observer.on_complete("cancelled", result)
+  else
+    self.request.observer.on_complete(status, result)
   end
+
   self.request = nil
 end
 
 --- @param line string
 function TestProvider:stdout(line)
   assert(self.request, "you cannot call stdout until make_request is called")
-  local obs = self.request.observer
-  if obs then
-    obs.on_stdout(line)
-  end
+  self.request.observer.on_stdout(line)
 end
 
 --- @param line string
 function TestProvider:stderr(line)
   assert(self.request, "you cannot call stderr until make_request is called")
-  local obs = self.request.observer
-  if obs then
-    obs.on_stderr(line)
-  end
+  self.request.observer.on_stderr(line)
 end
 
 M.TestProvider = TestProvider
@@ -104,21 +108,40 @@ function M.create_file(contents, file_type, row, col)
   return bufnr
 end
 
+--- @param opts _99.Options | nil
+--- @param provider _99.Providers.BaseProvider
+--- @return _99.Options
+function M.get_test_setup_options(opts, provider)
+  opts = opts or {}
+  opts.tmp_dir = opts.tmp_dir or vim.fn.tempname()
+  opts.provider = provider
+  opts.logger = {
+    error_cache_level = Levels.ERROR,
+    type = "print",
+  }
+  opts.in_flight_options = opts.in_flight_options
+    or {
+      throbber_opts = {
+        tick_time = 10,
+        throb_time = 1000,
+        cooldown_time = 500,
+      },
+      in_flight_interval = 10,
+      enable = true,
+    }
+  return opts
+end
+
 --- @param content string[]
 --- @param row number
 --- @param col number
 --- @param lang string?
+--- @param opts _99.Options | nil
 --- @return _99.test.Provider, number
-function M.fif_setup(content, row, col, lang)
-  assert(lang, "lang must be provided")
+function M.test_setup(content, row, col, lang, opts)
+  lang = lang or "lua"
   local provider = M.TestProvider.new()
-  require("99").setup({
-    provider = provider,
-    logger = {
-      error_cache_level = Levels.ERROR,
-      type = "print",
-    },
-  })
+  require("99").setup(M.get_test_setup_options(opts, provider))
 
   local buffer = M.create_file(content, lang, row, col)
   return provider, buffer

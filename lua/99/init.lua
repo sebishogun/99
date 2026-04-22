@@ -1,18 +1,18 @@
+--- TODO: I would like to clean up this file.  I will probably need to create a
+--- task for me to do in the future to make this a bit more clean and only have
+--- stuff that makes sense for the api to be in here... but for now.. ia m sorry
 local Logger = require("99.logger.logger")
+local Tracking = require("99.state.tracking")
 local Level = require("99.logger.level")
 local ops = require("99.ops")
-local Languages = require("99.language")
 local Window = require("99.window")
-local get_id = require("99.id")
-local RequestContext = require("99.request-context")
-local geo = require("99.geo")
-local Range = geo.Range
-local Point = geo.Point
+local select_window = require("99.window.select-window")
+local StatusWindow = require("99.window.status-window")
+local Prompt = require("99.prompt")
+local State = require("99.state")
 local Extensions = require("99.extensions")
 local Agents = require("99.extensions.agents")
 local Providers = require("99.providers")
-local time = require("99.time")
-local Throbber = require("99.ops.throbber")
 
 ---@param path_or_rule string | _99.Agents.Rule
 ---@return _99.Agents.Rule | string
@@ -41,230 +41,177 @@ local function process_opts(opts)
   return opts
 end
 
---- @alias _99.Cleanup fun(): nil
-
---- @class _99.RequestEntry
---- @field id number
---- @field operation string
---- @field status "running" | "success" | "failed" | "cancelled"
---- @field filename string
---- @field lnum number
---- @field col number
---- @field started_at number
-
---- @class _99.ActiveRequest
---- @field clean_up _99.Cleanup
---- @field request_id number
---- @field name string
-
---- @class _99.StateProps
---- @field model string
---- @field md_files string[]
---- @field prompts _99.Prompts
---- @field ai_stdout_rows number
---- @field show_in_flight_requests boolean
---- @field languages string[]
---- @field display_errors boolean
---- @field auto_add_skills boolean
---- @field provider_override _99.Providers.BaseProvider?
---- @field __active_requests table<number, _99.ActiveRequest>
---- @field __view_log_idx number
---- @field __request_history _99.RequestEntry[]
---- @field __request_by_id table<number, _99.RequestEntry>
-
---- @return _99.StateProps
-local function create_99_state()
-  return {
-    model = "anthropic/claude-opus-4-6",
-    md_files = {},
-    prompts = require("99.prompt-settings"),
-    ai_stdout_rows = 3,
-    show_in_flight_requests = false,
-    languages = {
-      "lua",
-      "go",
-      "java",
-      "elixir",
-      "cpp",
-      "ruby",
-      "rust",
-      "python",
-      "zig",
-      "typescript",
-    },
-    display_errors = false,
-    provider_override = nil,
-    auto_add_skills = false,
-    __active_requests = {},
-    __view_log_idx = 1,
-    __request_history = {},
-    __request_by_id = {},
-  }
-end
-
 --- @class _99.Completion
---- @field source "cmp" | nil
+--- @docs included
+--- @field source "cmp" | "blink" | nil
 --- @field custom_rules string[]
 --- @field files _99.Files.Config?
 
 --- @class _99.Options
---- @field logger _99.Logger.Options?
---- @field model string?
---- @field show_in_flight_requests boolean?
---- @field md_files string[]?
---- @field provider _99.Providers.BaseProvider?
---- @field debug_log_prefix string?
+--- @docs base
+--- @field logger? _99.Logger.Options
+--- @field model? string
+--- @field in_flight_options? _99.StatusWindow.Opts
+--- @field md_files? string[]
+--- @field provider? _99.Providers.BaseProvider
+--- @field provider_extra_args? string[]
 --- @field display_errors? boolean
 --- @field auto_add_skills? boolean
---- @field completion _99.Completion?
+--- @field completion? _99.Completion
+--- @field tmp_dir? string
 
---- unanswered question -- will i need to queue messages one at a time or
---- just send them all...  So to prepare ill be sending around this state object
---- @class _99.State
---- @field completion _99.Completion
---- @field model string
---- @field md_files string[]
---- @field prompts _99.Prompts
---- @field ai_stdout_rows number
---- @field languages string[]
---- @field display_errors boolean
---- @field show_in_flight_requests boolean
---- @field show_in_flight_requests_window _99.window.Window | nil
---- @field show_in_flight_requests_throbber _99.Throbber | nil
---- @field provider_override _99.Providers.BaseProvider?
---- @field auto_add_skills boolean
---- @field rules _99.Agents.Rules
---- @field __active_requests table<number, _99.ActiveRequest>
---- @field __view_log_idx number
---- @field __request_history _99.RequestEntry[]
---- @field __request_by_id table<number, _99.RequestEntry>
---- @field __active_marks _99.Mark[]
-local _99_State = {}
-_99_State.__index = _99_State
+--- @type _99.State
+local _99_state
 
---- @return _99.State
-function _99_State.new()
-  local props = create_99_state()
-  ---@diagnostic disable-next-line: return-type-mismatch
-  return setmetatable(props, _99_State)
-end
-
---- TODO: This is something to understand.  I bet that this is going to need
---- a lot of performance tuning.  I am just reading every file, and this could
---- take a decent amount of time if there are lots of rules.
----
---- Simple perfs:
---- 1. read 4096 bytes at a tiem instead of whole file and parse out lines
---- 2. don't show the docs
---- 3. do the operation once at setup instead of every time.
----    likely not needed to do this all the time.
-function _99_State:refresh_rules()
-  self.rules = Agents.rules(self)
-  Extensions.refresh(self)
-end
-
---- @param context _99.RequestContext
---- @return _99.RequestEntry
-function _99_State:track_request(context)
-  local point = context.range and context.range.start or Point:from_cursor()
-  local entry = {
-    id = context.xid,
-    operation = context.operation or "request",
-    status = "running",
-    filename = context.full_path,
-    lnum = point.row,
-    col = point.col,
-    started_at = time.now(),
-  }
-  table.insert(self.__request_history, entry)
-  self.__request_by_id[entry.id] = entry
-  return entry
-end
-
---- @param id number
---- @param status "success" | "failed" | "cancelled"
-function _99_State:finish_request(id, status)
-  local entry = self.__request_by_id[id]
-  if entry then
-    entry.status = status
-  end
-end
-
---- @param id number
-function _99_State:remove_request(id)
-  for i, entry in ipairs(self.__request_history) do
-    if entry.id == id then
-      table.remove(self.__request_history, i)
-      break
-    end
-  end
-  self.__request_by_id[id] = nil
-end
-
---- @return number
-function _99_State:previous_request_count()
-  local count = 0
-  for _, entry in ipairs(self.__request_history) do
-    if entry.status ~= "running" then
-      count = count + 1
-    end
-  end
-  return count
-end
-
-function _99_State:clear_previous_requests()
-  local keep = {}
-  for _, entry in ipairs(self.__request_history) do
-    if entry.status == "running" then
-      table.insert(keep, entry)
-    else
-      self.__request_by_id[entry.id] = nil
-    end
-  end
-  self.__request_history = keep
-end
-
-local _active_request_id = 0
----@param clean_up _99.Cleanup
----@param request_id number
----@param name string
----@return number
-function _99_State:add_active_request(clean_up, request_id, name)
-  _active_request_id = _active_request_id + 1
-  Logger:debug("adding active request", "id", _active_request_id)
-  self.__active_requests[_active_request_id] = {
-    clean_up = clean_up,
-    request_id = request_id,
-    name = name,
-  }
-  return _active_request_id
-end
-
---- @param mark _99.Mark
-function _99_State:add_mark(mark)
-  table.insert(self.__active_marks, mark)
-end
-
-function _99_State:active_request_count()
-  local count = 0
-  for _ in pairs(self.__active_requests) do
-    count = count + 1
-  end
-  return count
-end
-
----@param id number
-function _99_State:remove_active_request(id)
-  local logger = Logger:set_id(id)
-  local r = self.__active_requests[id]
-  logger:assert(r, "there is no active request for id.  implementation broken")
-  logger:debug("removing active request")
-  self.__active_requests[id] = nil
-end
-
-local _99_state = _99_State.new()
+--- @alias _99.TraceID number
 
 --- @class _99
+--- 99 is an agentic workflow that is meant to meld the current programmers ability
+--- with the amazing powers of LLMs.  Instead of being a replacement, its meant to
+--- augment the programmer.
+---
+--- As of now, the direction of 99 is to progress into agentic programming and surfacing
+--- of information.  In the beginning and the original youtube video was about replacing
+--- specific pieces of code.  The more i use 99 the more i realize the better use is
+--- through `search` and `work`
+---
+--- ### Basic Setup
+--- ```lua
+--- 	{
+--- 		"ThePrimeagen/99",
+--- 		config = function()
+--- 			local _99 = require("99")
+---
+---             -- For logging that is to a file if you wish to trace through requests
+---             -- for reporting bugs, i would not rely on this, but instead the provided
+---             -- logging mechanisms within 99.  This is for more debugging purposes
+---             local cwd = vim.uv.cwd()
+---             local basename = vim.fs.basename(cwd)
+--- 			_99.setup({
+---                 -- provider = _99.Providers.ClaudeCodeProvider,  -- default: OpenCodeProvider
+--- 				logger = {
+--- 					level = _99.DEBUG,
+--- 					path = "/tmp/" .. basename .. ".99.debug",
+--- 					print_on_error = true,
+--- 				},
+---                 -- When setting this to something that is not inside the CWD tools
+---                 -- such as claude code or opencode will have permission issues
+---                 -- and generation will fail refer to tool documentation to resolve
+---                 -- https://opencode.ai/docs/permissions/#external-directories
+---                 -- https://code.claude.com/docs/en/permissions#read-and-edit
+---                 tmp_dir = "./tmp",
+---
+---                 --- Completions: #rules and @files in the prompt buffer
+---                 completion = {
+---                     -- I am going to disable these until i understand the
+---                     -- problem better.  Inside of cursor rules there is also
+---                     -- application rules, which means i need to apply these
+---                     -- differently
+---                     -- cursor_rules = "<custom path to cursor rules>"
+---
+---                     --- A list of folders where you have your own SKILL.md
+---                     --- Expected format:
+---                     --- /path/to/dir/<skill_name>/SKILL.md
+---                     ---
+---                     --- Example:
+---                     --- Input Path:
+---                     --- "scratch/custom_rules/"
+---                     ---
+---                     --- Output Rules:
+---                     --- {path = "scratch/custom_rules/vim/SKILL.md", name = "vim"},
+---                     --- ... the other rules in that dir ...
+---                     ---
+---                     custom_rules = {
+---                       "scratch/custom_rules/",
+---                     },
+---
+---                     --- Configure @file completion (all fields optional, sensible defaults)
+---                     files = {
+---                         -- enabled = true,
+---                         -- max_file_size = 102400,     -- bytes, skip files larger than this
+---                         -- max_files = 5000,            -- cap on total discovered files
+---                         -- exclude = { ".env", ".env.*", "node_modules", ".git", ... },
+---                     },
+---
+---                     --- What autocomplete you use.
+---                     source = "cmp" | "blink",
+---                 },
+---
+---                 --- WARNING: if you change cwd then this is likely broken
+---                 --- ill likely fix this in a later change
+---                 ---
+---                 --- md_files is a list of files to look for and auto add based on the location
+---                 --- of the originating request.  That means if you are at /foo/bar/baz.lua
+---                 --- the system will automagically look for:
+---                 --- /foo/bar/AGENT.md
+---                 --- /foo/AGENT.md
+---                 --- assuming that /foo is project root (based on cwd)
+--- 				md_files = {
+--- 					"AGENT.md",
+--- 				},
+--- 			})
+---
+---             -- take extra note that i have visual selection only in v mode
+---             -- technically whatever your last visual selection is, will be used
+---             -- so i have this set to visual mode so i dont screw up and use an
+---             -- old visual selection
+---             --
+---             -- likely ill add a mode check and assert on required visual mode
+---             -- so just prepare for it now
+--- 			vim.keymap.set("v", "<leader>9v", function()
+--- 				_99.visual()
+--- 			end)
+---
+---             --- if you have a request you dont want to make any changes, just cancel it
+--- 			vim.keymap.set("n", "<leader>9x", function()
+--- 				_99.stop_all_requests()
+--- 			end)
+---
+--- 			vim.keymap.set("n", "<leader>9s", function()
+--- 				_99.search()
+--- 			end)
+--- 		end,
+--- 	},
+--- ```
+---
+--- ### Usage
+--- I would highly recommend trying out `search` as its the direction the library is going
+---
+--- ```lua
+--- _99.search()
+--- ```
+---
+--- See search for more details
+---
+--- @docs base
+--- @field setup fun(opts?: _99.Options): nil
+--- Sets up _99.  Must be called for this library to work.  This is how we setup
+--- in flight request spinners, set default values, get completion to work the
+--- way you want it to.
+--- @field search fun(opts: _99.ops.SearchOpts): _99.TraceID
+--- Performs a search across your project with the prompt you provide and return out a list of
+--- locations with notes that will be put into your quick fix list.
+--- @field vibe fun(opts?: _99.ops.Opts): _99.TraceID | nil
+--- will ask opencode or whatever provider currently being used to perform a vibe
+--- session.
+--- @field open fun(): nil
+--- Opens a selection window for you to select the last interaction to open
+--- and display its contents in a way that makes sense for its type.  For
+--- search and vibe, it will open the qfix window.  For tutorial, it will open
+--- the tutorial window.
+--- @field visual fun(opts: _99.ops.Opts): _99.TraceID
+--- takes your current selection and sends that along with the prompt provided and replaces
+--- your visual selection with the results
+--- @field view_logs fun(): nil
+--- view_logs allows you to select the request you want to see and then you
+--- get to see the logs.
+--- @field stop_all_requests fun(): nil
+--- stops all in flight requests.  this means that the underlying process will
+--- be killed (OpenCode) and any result will be discared
+--- @field clear_previous_requests fun(): nil
+--- clears all previous search and visual operations
+--- @field Extensions _99.Extensions
+--- check out Worker for cool abstraction on search and vibe
 local _99 = {
   DEBUG = Level.DEBUG,
   INFO = Level.INFO,
@@ -273,21 +220,18 @@ local _99 = {
   FATAL = Level.FATAL,
 }
 
---- you can only set those marks after the visual selection is removed
-local function set_selection_marks()
-  vim.api.nvim_feedkeys(
-    vim.api.nvim_replace_termcodes("<Esc>", true, false, true),
-    "x",
-    false
-  )
-end
-
---- @param cb fun(context: _99.RequestContext, o: _99.ops.Opts?): nil
+--- @param cb fun(context: _99.Prompt, o: _99.ops.Opts?): nil
 --- @param name string
---- @param context _99.RequestContext
+--- @param context _99.Prompt
 --- @param opts _99.ops.Opts
-local function capture_prompt(cb, name, context, opts)
+--- @param capture_content string[] | nil
+local function capture_prompt(cb, name, context, opts, capture_content)
   Window.capture_input(name, {
+    keymap = {
+      [":w"] = "submit",
+    },
+    content = capture_content,
+
     --- @param ok boolean
     --- @param response string
     cb = function(ok, response)
@@ -307,14 +251,8 @@ local function capture_prompt(cb, name, context, opts)
         table.insert(opts.additional_rules, r)
       end
       opts.additional_prompt = response
-      local success, err = pcall(cb, context, opts)
-      if not success then
-        context.logger:error("capture_prompt failed", "error", tostring(err))
-        vim.notify(
-          "99: " .. name .. " failed: " .. tostring(err),
-          vim.log.levels.ERROR
-        )
-      end
+      context.user_prompt = response
+      cb(context, opts)
     end,
     on_load = function()
       Extensions.setup_buffer(_99_state)
@@ -323,23 +261,12 @@ local function capture_prompt(cb, name, context, opts)
   })
 end
 
---- @param operation_name string
---- @return _99.RequestContext
-local function get_context(operation_name)
-  _99_state:refresh_rules()
-  local trace_id = get_id()
-  local context = RequestContext.from_current_buffer(_99_state, trace_id)
-  context.operation = operation_name
-  context.logger:debug("99 Request", "method", operation_name)
-  return context
-end
-
 function _99.info()
   local info = {}
   _99_state:refresh_rules()
   table.insert(
     info,
-    string.format("Previous Requests: %d", _99_state:previous_request_count())
+    string.format("Previous Requests: %d", _99_state.tracking:completed())
   )
   table.insert(
     info,
@@ -352,16 +279,17 @@ function _99.info()
 end
 
 function _99.doctor()
-  local lines = { "99 Doctor", "" }
   local state = _99.__get_state()
-  local provider = state.provider_override or Providers.OpenCodeProvider
-  local provider_name = provider._get_provider_name
-      and provider:_get_provider_name()
+  local provider = _99.get_provider()
+  local provider_name = provider._get_provider_name and provider:_get_provider_name()
     or "unknown"
-
-  table.insert(lines, string.format("Provider: %s", provider_name))
-  table.insert(lines, string.format("Model: %s", state.model or "<unset>"))
-  table.insert(lines, "")
+  local lines = {
+    "99 Doctor",
+    "",
+    string.format("Provider: %s", provider_name),
+    string.format("Model: %s", state.model or "<unset>"),
+    "",
+  }
 
   local checks = {
     { name = "opencode", ok = vim.fn.executable("opencode") == 1 },
@@ -380,11 +308,11 @@ function _99.doctor()
   end
 
   local tmp = vim.fn.stdpath("cache") .. "/99-doctor-write-test"
-  local f = io.open(tmp, "w")
-  local writable = f ~= nil
-  if f then
-    f:write("ok")
-    f:close()
+  local file = io.open(tmp, "w")
+  local writable = file ~= nil
+  if file then
+    file:write("ok")
+    file:close()
     os.remove(tmp)
   end
 
@@ -405,148 +333,155 @@ function _99.doctor()
 
   table.insert(
     lines,
-    string.format(
-      "Treesitter parser (%s): %s",
-      ft,
-      parser_ok and "ok" or "missing"
-    )
+    string.format("Treesitter parser (%s): %s", ft, parser_ok and "ok" or "missing")
   )
   table.insert(
     lines,
-    string.format(
-      "99-function query (%s): %s",
-      ft,
-      query_ok and "ok" or "missing"
-    )
+    string.format("99-function query (%s): %s", ft, query_ok and "ok" or "missing")
   )
 
   Window.display_centered_message(lines)
 end
 
---- @param path string
-function _99:rule_from_path(path)
-  _ = self
-  path = expand(path) --[[ @as string]]
-  return Agents.get_rule_by_path(_99_state.rules, path)
+--     elseif #tutorials == 1 then
+--       local data = tutorials[1]
+--       assert(data, "tutorial is malformed")
+--       Window.create_split(data.tutorial, data.buffer, opts)
+--       return
+
+--- @param context _99.Prompt
+function _99.open_tutorial(context)
+  local tutorial = context:tutorial_data()
+  Window.create_split(tutorial.tutorial, tutorial.buffer, {
+    split_direction = "vertical",
+    window_opts = {
+      wrap = true,
+    },
+  })
+end
+
+function _99.open()
+  local requests = _99_state.tracking:successful()
+  local str_requests = Tracking.to_selectable_list(requests)
+  select_window(str_requests, function(idx)
+    local r = requests[idx]
+    assert(r:valid(), "encountered unexpected issue.  malformated data")
+    if r.operation == "visual" then
+      --- TODO: this is its own work item for being able to have a global mark
+      --- section in which i keep track of marks for the lifetime of the
+      --- editor and when you close the editor, then it should lose them
+      print("visual not supported: i will figure this out... at some point")
+    elseif r.operation == "search" or r.operation == "vibe" then
+      _99.open_qfix_for_request(r)
+    elseif r.operation == "tutorial" then
+      _99.open_tutorial(r)
+    end
+  end)
+end
+
+--- @param opts? _99.ops.Opts
+--- @return _99.TraceID
+function _99.vibe(opts)
+  local o = process_opts(opts)
+  local context = Prompt.vibe(_99_state)
+  if o.additional_prompt then
+    context.user_prompt = o.additional_prompt
+    ops.vibe(context, o)
+  else
+    capture_prompt(ops.vibe, "Vibe", context, o)
+  end
+  return context.xid
 end
 
 --- @param opts? _99.ops.SearchOpts
+--- @return _99.TraceID
 function _99.search(opts)
   local o = process_opts(opts) --[[ @as _99.ops.SearchOpts ]]
-  local context = get_context("search")
+  local context = Prompt.search(_99_state)
   if o.additional_prompt then
+    context.user_prompt = o.additional_prompt
     ops.search(context, o)
-    return
   else
     capture_prompt(ops.search, "Search", context, o)
   end
+  return context.xid
 end
 
---- @param opts _99.ops.Opts?
-function _99.fill_in_function(opts)
+--- @param opts _99.ops.Opts
+function _99.tutorial(opts)
   opts = process_opts(opts)
-  local context = get_context("fill_in_function")
-  ops.fill_in_function(context, opts)
-end
-
---- @param opts _99.ops.Opts?
-function _99.fill_in_function_prompt(opts)
-  opts = process_opts(opts)
-  local context = get_context("fill_in_function")
-  capture_prompt(ops.fill_in_function, "Fill In Function", context, opts)
-end
-
---- @param opts _99.ops.Opts?
-function _99.visual_prompt(opts)
-  opts = process_opts(opts)
-  local context = get_context("visual")
-  local function perform_range()
-    set_selection_marks()
-    local range = Range.from_visual_selection()
-    ops.over_range(context, range, opts)
+  local context = Prompt.tutorial(_99_state)
+  if opts.additional_prompt then
+    context.user_prompt = opts.additional_prompt
+    ops.tutorial(context, opts)
+  else
+    capture_prompt(ops.tutorial, "Tutorial", context, opts)
   end
-  capture_prompt(perform_range, "Visual", context, opts)
 end
 
 --- @param opts _99.ops.Opts?
+--- @return _99.TraceID
 function _99.visual(opts)
   opts = process_opts(opts)
-  local context = get_context("visual")
-  local function perform_range()
-    set_selection_marks()
-    local range = Range.from_visual_selection()
-    ops.over_range(context, range, opts)
-  end
+  local context = Prompt.visual(_99_state)
   if opts.additional_prompt then
-    perform_range()
+    context.user_prompt = opts.additional_prompt
+    ops.over_range(context, opts)
   else
-    capture_prompt(perform_range, "Visual", context, opts)
+    capture_prompt(ops.over_range, "Visual", context, opts)
   end
+  return context.xid
 end
 
---- View all the logs that are currently cached.  Cached log count is determined
---- by _99.Logger.Options that are passed in.
+--- @param opts _99.ops.Opts?
+--- @return _99.TraceID | nil
+function _99.fill_in_function(opts)
+  local o = process_opts(opts)
+  local context = Prompt.fill_in_function(_99_state)
+  ops.fill_in_function(context, o)
+  return context.xid
+end
+
+--- @param opts _99.ops.Opts?
+--- @return _99.TraceID
+function _99.fill_in_function_prompt(opts)
+  local o = process_opts(opts)
+  local context = Prompt.fill_in_function(_99_state)
+  capture_prompt(ops.fill_in_function, "Fill In Function", context, o)
+  return context.xid
+end
+
 function _99.view_logs()
-  _99_state.__view_log_idx = 1
-  local logs = Logger.logs()
-  if #logs == 0 then
-    print("no logs to display")
+  local requests = _99_state.tracking.history
+  local str_requests = Tracking.to_selectable_list(requests)
+  select_window(str_requests, function(idx)
+    local r = requests[idx]
+    local logs = Logger.logs_by_id(r.xid)
+    if logs == nil then
+      logs = { "No logs found for request: " .. r.xid }
+    end
+    Window.display_full_screen_message(logs)
+  end)
+end
+
+--- @param request _99.Prompt
+function _99.open_qfix_for_request(request)
+  local items = request:qfix_data()
+  if #items == 0 then
+    print("there are no quickfix items to show")
     return
   end
-  Window.display_full_screen_message(logs[1])
-end
 
-function _99.prev_request_logs()
-  local logs = Logger.logs()
-  if #logs == 0 then
-    print("no logs to display")
-    return
-  end
-  _99_state.__view_log_idx = math.min(_99_state.__view_log_idx + 1, #logs)
-  Window.display_full_screen_message(logs[_99_state.__view_log_idx])
-end
-
-function _99.next_request_logs()
-  local logs = Logger.logs()
-  if #logs == 0 then
-    print("no logs to display")
-    return
-  end
-  _99_state.__view_log_idx = math.max(_99_state.__view_log_idx - 1, 1)
-  Window.display_full_screen_message(logs[_99_state.__view_log_idx])
-end
-
-function _99.stop_all_requests()
-  for _, active in pairs(_99_state.__active_requests) do
-    _99_state:remove_request(active.request_id)
-    active.clean_up()
-  end
-  _99_state.__active_requests = {}
-end
-
-function _99.clear_all_marks()
-  for _, mark in ipairs(_99_state.__active_marks or {}) do
-    mark:delete()
-  end
-  _99_state.__active_marks = {}
-end
-
-function _99.previous_requests_to_qfix()
-  local items = {}
-  for _, entry in ipairs(_99_state.__request_history) do
-    table.insert(items, {
-      filename = entry.filename,
-      lnum = entry.lnum,
-      col = entry.col,
-      text = string.format("[%s] %s", entry.status, entry.operation),
-    })
-  end
-  vim.fn.setqflist({}, "r", { title = "99 Requests", items = items })
+  vim.fn.setqflist({}, "r", { title = "99 Results", items = items })
   vim.cmd("copen")
 end
 
+function _99.stop_all_requests()
+  _99_state.tracking:stop_all_requests()
+end
+
 function _99.clear_previous_requests()
-  _99_state:clear_previous_requests()
+  _99_state.tracking:clear_history()
 end
 
 --- if you touch this function you will be fired
@@ -555,86 +490,23 @@ function _99.__get_state()
   return _99_state
 end
 
-local function shut_down_in_flight_requests_window()
-  if _99_state.show_in_flight_requests_throbber then
-    _99_state.show_in_flight_requests_throbber:stop()
-  end
-
-  local win = _99_state.show_in_flight_requests_window
-  if win ~= nil then
-    Window.close(win)
-  end
-  _99_state.show_in_flight_requests_window = nil
-  _99_state.show_in_flight_requests_throbber = nil
-end
-
-local function show_in_flight_requests()
-  if _99_state.show_in_flight_requests == false then
-    return
-  end
-  vim.defer_fn(show_in_flight_requests, 1000)
-
-  Window.refresh_active_windows()
-  local current_win = _99_state.show_in_flight_requests_window
-  if current_win ~= nil and not Window.is_active_window(current_win) then
-    shut_down_in_flight_requests_window()
-  end
-
-  if Window.has_active_windows() or _99_state:active_request_count() == 0 then
-    return
-  end
-
-  if _99_state.show_in_flight_requests_window == nil then
-    local win = Window.status_window()
-    local throb = Throbber.new(function(throb)
-      local count = _99_state:active_request_count()
-      if count == 0 or not Window.valid(win) then
-        return shut_down_in_flight_requests_window()
-      end
-
-      local lines = {
-        throb .. " requests(" .. tostring(count) .. ") " .. throb,
-      }
-      for _, r in pairs(_99_state.__active_requests) do
-        table.insert(lines, r.name)
-      end
-
-      Window.resize(win, #lines[1], #lines)
-      vim.api.nvim_buf_set_lines(win.buf_id, 0, 1, false, lines)
-    end)
-    _99_state.show_in_flight_requests_window = win
-    _99_state.show_in_flight_requests_throbber = throb
-
-    throb:start()
-  end
-end
-
 --- @param opts _99.Options?
 function _99.setup(opts)
   opts = opts or {}
 
-  _99_state = _99_State.new()
-  _99_state.show_in_flight_requests = opts.show_in_flight_requests or false
-  _99_state.provider_override = opts.provider
-  _99_state.completion = opts.completion
-    or {
-      source = nil,
-      custom_rules = {},
-    }
-  _99_state.completion.custom_rules = _99_state.completion.custom_rules or {}
-  _99_state.auto_add_skills = opts.auto_add_skills or false
-  _99_state.completion.files = _99_state.completion.files or {}
+  _99_state = State.new(opts)
 
   local crules = _99_state.completion.custom_rules
   for i, rule in ipairs(crules) do
     local str = expand(rule)
-    assert(type(str) == "string", "rule path must be a string")
+    assert(type(str) == "string", "error parsing rule: path must be a string")
     crules[i] = str
   end
 
   vim.api.nvim_create_autocmd("VimLeavePre", {
     callback = function()
       _99.stop_all_requests()
+      _99_state:sync()
     end,
   })
 
@@ -650,6 +522,13 @@ function _99.setup(opts)
     end
   end
 
+  if opts.provider_extra_args then
+    assert(
+      type(opts.provider_extra_args) == "table",
+      "opts.provider_extra_args must be a table"
+    )
+  end
+
   if opts.md_files then
     assert(type(opts.md_files) == "table", "opts.md_files is not a table")
     for _, md in ipairs(opts.md_files) do
@@ -657,15 +536,18 @@ function _99.setup(opts)
     end
   end
 
+  if opts.tmp_dir then
+    assert(type(opts.tmp_dir) == "string", "opts.tmp_dir must be a string")
+  end
+  _99_state.__tmp_dir = opts.tmp_dir
+
   _99_state.display_errors = opts.display_errors or false
   _99_state:refresh_rules()
-  Languages.initialize(_99_state)
   Extensions.init(_99_state)
   Extensions.capture_project_root()
 
-  if _99_state.show_in_flight_requests then
-    show_in_flight_requests()
-  end
+  local sw = StatusWindow.new(_99_state, opts.in_flight_options)
+  sw:start()
 end
 
 --- @param md string
@@ -694,6 +576,26 @@ function _99.set_model(model)
   return _99
 end
 
+--- @return string
+function _99.get_model()
+  return _99_state.model
+end
+
+--- @return _99.Providers.BaseProvider
+function _99.get_provider()
+  return _99_state.provider_override or Providers.OpenCodeProvider
+end
+
+--- @param provider _99.Providers.BaseProvider
+--- @return _99
+function _99.set_provider(provider)
+  _99_state.provider_override = provider
+  if provider._get_default_model then
+    _99_state.model = provider._get_default_model()
+  end
+  return _99
+end
+
 function _99.__debug()
   Logger:configure({
     path = nil,
@@ -702,4 +604,10 @@ function _99.__debug()
 end
 
 _99.Providers = Providers
+
+--- @class _99.Extensions
+--- @field Worker _99.Extensions.Worker
+_99.Extensions = {
+  Worker = require("99.extensions.work.worker"),
+}
 return _99

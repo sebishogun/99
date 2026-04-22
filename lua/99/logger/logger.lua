@@ -8,6 +8,7 @@ local logger_list = {}
 local max_requests_in_logger_cache = MAX_REQUEST_DEFAULT
 
 --- @class _99.Logger.Options
+--- @docs included
 --- @field level number?
 --- @field type? "print" | "void" | "file"
 --- @field path string?
@@ -66,9 +67,13 @@ FileSink.__index = FileSink
 --- @param path string
 --- @return LoggerSink
 function FileSink:new(path)
-  local fd, err = vim.uv.fs_open(path, "w", 493)
+  -- Ensure the directory is already there (*thanks Windows*)
+  vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
+
+  -- 420 decimal == 644 octal (rw-r--r--)
+  local fd, err = vim.uv.fs_open(path, "w", 420)
   if not fd then
-    error("unable to file sink", err)
+    error("unable to file sink: " .. err)
   end
 
   return setmetatable({
@@ -271,6 +276,13 @@ function Logger.logs()
     table.insert(out, request_logs.logs)
   end
   return out
+end
+
+--- @param xid number
+--- @return string[] | nil
+function Logger.logs_by_id(xid)
+  local logs = logger_cache[xid]
+  return logs and logs.logs
 end
 
 --- @param level number

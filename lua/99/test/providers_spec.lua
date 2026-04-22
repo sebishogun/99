@@ -5,23 +5,23 @@ local Providers = require("99.providers")
 describe("providers", function()
   describe("OpenCodeProvider", function()
     it("builds correct command with model", function()
-      local request = { context = { model = "anthropic/claude-opus-4-6" } }
+      local request = { model = "anthropic/claude-sonnet-4-5" }
       local cmd =
         Providers.OpenCodeProvider._build_command(nil, "test query", request)
       eq({
         "opencode",
         "run",
         "--agent",
-        "neovim",
+        "build",
         "-m",
-        "anthropic/claude-opus-4-6",
+        "anthropic/claude-sonnet-4-5",
         "test query",
       }, cmd)
     end)
 
     it("has correct default model", function()
       eq(
-        "anthropic/claude-opus-4-6",
+        "opencode/claude-sonnet-4-5",
         Providers.OpenCodeProvider._get_default_model()
       )
     end)
@@ -29,27 +29,67 @@ describe("providers", function()
 
   describe("ClaudeCodeProvider", function()
     it("builds correct command with model", function()
-      local request = { context = { model = "claude-opus-4-6" } }
+      local request = { model = "anthropic/claude-sonnet-4-5" }
       local cmd =
         Providers.ClaudeCodeProvider._build_command(nil, "test query", request)
       eq({
         "claude",
         "--dangerously-skip-permissions",
         "--model",
-        "claude-opus-4-6",
+        "anthropic/claude-sonnet-4-5",
         "--print",
         "test query",
       }, cmd)
     end)
 
     it("has correct default model", function()
-      eq("claude-opus-4-6", Providers.ClaudeCodeProvider._get_default_model())
+      eq("claude-sonnet-4-5", Providers.ClaudeCodeProvider._get_default_model())
+    end)
+  end)
+
+  describe("CursorAgentProvider", function()
+    it("builds correct command with model", function()
+      local request = { model = "anthropic/claude-sonnet-4-5" }
+      local cmd =
+        Providers.CursorAgentProvider._build_command(nil, "test query", request)
+      eq({
+        "cursor-agent",
+        "--model",
+        "anthropic/claude-sonnet-4-5",
+        "--print",
+        "test query",
+      }, cmd)
+    end)
+
+    it("has correct default model", function()
+      eq("sonnet-4.5", Providers.CursorAgentProvider._get_default_model())
+    end)
+  end)
+
+  describe("GeminiCLIProvider", function()
+    it("builds correct command with model", function()
+      local request = { model = "gemini-2.5-pro" }
+      local cmd =
+        Providers.GeminiCLIProvider._build_command(nil, "test query", request)
+      eq({
+        "gemini",
+        "--approval-mode",
+        "auto_edit",
+        "--model",
+        "gemini-2.5-pro",
+        "--prompt",
+        "test query",
+      }, cmd)
+    end)
+
+    it("has correct default model", function()
+      eq("auto", Providers.GeminiCLIProvider._get_default_model())
     end)
   end)
 
   describe("CopilotCLIProvider", function()
     it("builds correct command with model", function()
-      local request = { context = { model = "claude-opus-4.6" } }
+      local request = { model = "claude-opus-4.6" }
       local cmd =
         Providers.CopilotCLIProvider._build_command(nil, "test query", request)
       eq({
@@ -70,7 +110,7 @@ describe("providers", function()
 
   describe("CodexProvider", function()
     it("builds correct command with model", function()
-      local request = { context = { model = "gpt-codex-5.3" } }
+      local request = { model = "gpt-codex-5.3" }
       local cmd =
         Providers.CodexProvider._build_command(nil, "test query", request)
       eq({
@@ -85,24 +125,6 @@ describe("providers", function()
 
     it("has correct default model", function()
       eq("gpt-codex-5.3", Providers.CodexProvider._get_default_model())
-    end)
-  end)
-
-  describe("GitLabDuoProvider", function()
-    it("builds correct command with goal", function()
-      local request = { context = { model = "gitlab-duo" } }
-      local cmd =
-        Providers.GitLabDuoProvider._build_command(nil, "test query", request)
-      eq({
-        "duo",
-        "run",
-        "--goal",
-        "test query",
-      }, cmd)
-    end)
-
-    it("has correct default model", function()
-      eq("gitlab-duo", Providers.GitLabDuoProvider._get_default_model())
     end)
   end)
 
@@ -122,7 +144,7 @@ describe("providers", function()
 
         _99.setup({})
         local state = _99.__get_state()
-        eq("anthropic/claude-opus-4-6", state.model)
+        eq("opencode/claude-sonnet-4-5", state.model)
       end
     )
 
@@ -133,7 +155,51 @@ describe("providers", function()
 
         _99.setup({ provider = Providers.ClaudeCodeProvider })
         local state = _99.__get_state()
-        eq("claude-opus-4-6", state.model)
+        eq("claude-sonnet-4-5", state.model)
+      end
+    )
+
+    it(
+      "uses CursorAgentProvider default model when provider specified but no model",
+      function()
+        local _99 = require("99")
+
+        _99.setup({ provider = Providers.CursorAgentProvider })
+        local state = _99.__get_state()
+        eq("sonnet-4.5", state.model)
+      end
+    )
+
+    it(
+      "uses GeminiCLIProvider default model when provider specified but no model",
+      function()
+        local _99 = require("99")
+
+        _99.setup({ provider = Providers.GeminiCLIProvider })
+        local state = _99.__get_state()
+        eq("auto", state.model)
+      end
+    )
+
+    it(
+      "uses CopilotCLIProvider default model when provider specified but no model",
+      function()
+        local _99 = require("99")
+
+        _99.setup({ provider = Providers.CopilotCLIProvider })
+        local state = _99.__get_state()
+        eq("claude-opus-4.6", state.model)
+      end
+    )
+
+    it(
+      "uses CodexProvider default model when provider specified but no model",
+      function()
+        local _99 = require("99")
+
+        _99.setup({ provider = Providers.CodexProvider })
+        local state = _99.__get_state()
+        eq("gpt-codex-5.3", state.model)
       end
     )
 
@@ -149,14 +215,39 @@ describe("providers", function()
     end)
   end)
 
+  describe("provider_extra_args", function()
+    it("stores provider_extra_args on state", function()
+      local _99 = require("99")
+      _99.setup({
+        provider_extra_args = { "--no-session-persistence" },
+      })
+      local state = _99.__get_state()
+      eq({ "--no-session-persistence" }, state.provider_extra_args)
+    end)
+
+    it("defaults provider_extra_args to empty table", function()
+      local _99 = require("99")
+      _99.setup({})
+      local state = _99.__get_state()
+      eq({}, state.provider_extra_args)
+    end)
+  end)
+
   describe("BaseProvider", function()
     it("all providers have make_request", function()
       eq("function", type(Providers.OpenCodeProvider.make_request))
       eq("function", type(Providers.ClaudeCodeProvider.make_request))
+      eq("function", type(Providers.CursorAgentProvider.make_request))
+      eq("function", type(Providers.GeminiCLIProvider.make_request))
       eq("function", type(Providers.CopilotCLIProvider.make_request))
-      eq("function", type(Providers.GeminiProvider.make_request))
       eq("function", type(Providers.CodexProvider.make_request))
-      eq("function", type(Providers.GitLabDuoProvider.make_request))
+    end)
+  end)
+
+  describe("public api", function()
+    it("exposes doctor", function()
+      local _99 = require("99")
+      eq("function", type(_99.doctor))
     end)
   end)
 end)

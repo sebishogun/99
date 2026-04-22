@@ -8,12 +8,45 @@ local Files = require("99.extensions.files")
 --- @param completion _99.Completion | nil
 --- @return _99.Extensions.Source | nil
 local function get_source(completion)
-  if not completion or not completion.source then
-    return
+  local source = completion and completion.source or "native"
+
+  if source == "native" then
+    local ok, native = pcall(require, "99.extensions.native")
+    if not ok then
+      vim.notify("[99] Failed to load native completions", vim.log.levels.ERROR)
+      return
+    end
+    return native
   end
-  local source = completion.source
+
   if source == "cmp" then
-    local cmp = require("99.extensions.cmp")
+    local ok, cmp = pcall(require, "99.extensions.cmp")
+    if not ok then
+      vim.notify(
+        '[99] nvim-cmp is not installed. Install hrsh7th/nvim-cmp or use source = "blink" or "native"',
+        vim.log.levels.WARN
+      )
+      return
+    end
+    return cmp
+  end
+  if source == "blink" then
+    local ok, _ = pcall(require, "blink.compat")
+    if not ok then
+      vim.notify(
+        "[99] blink.compat is required for blink source. Install: { 'saghen/blink.compat', version = '2.*' }",
+        vim.log.levels.ERROR
+      )
+      return
+    end
+    local cmp_ok, cmp = pcall(require, "99.extensions.cmp")
+    if not cmp_ok then
+      vim.notify(
+        "[99] 99 completion module failed to load",
+        vim.log.levels.ERROR
+      )
+      return
+    end
     return cmp
   end
 end

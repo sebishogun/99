@@ -204,6 +204,18 @@ function Point.from_mark(mark)
   }, Point)
 end
 
+--- Returns the line in the editor that this point is on
+--- @param buffer number
+function Point:line(buffer)
+  local row, _ = self:to_vim()
+  local lines = vim.api.nvim_buf_get_lines(buffer, row, row + 1, false)
+  return lines[1]
+end
+
+function Point.zero()
+  return Point.from_0_based(0, 0)
+end
+
 --- @class _99.Range
 --- @field start _99.Point
 --- @field end_ _99.Point
@@ -351,6 +363,11 @@ function Range:to_string()
     self.start:to_string(),
     self.end_:to_string()
   )
+end
+
+--- @return _99.Range
+function Range.zero()
+  return Range:new(0, Point.zero(), Point.zero())
 end
 
 return {
